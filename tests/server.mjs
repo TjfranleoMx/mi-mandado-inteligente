@@ -2,7 +2,7 @@ import http from 'node:http';
 import {readFile} from 'node:fs/promises';
 import path from 'node:path';
 const root=process.cwd(),prefix='/mi-mandado-inteligente/';
-const types={'.html':'text/html','.css':'text/css','.js':'text/javascript','.mjs':'text/javascript','.json':'application/json','.webmanifest':'application/manifest+json','.svg':'image/svg+xml','.png':'image/png'};
+const types={'.html':'text/html','.css':'text/css','.js':'text/javascript','.mjs':'text/javascript','.json':'application/json','.webmanifest':'application/manifest+json','.svg':'image/svg+xml','.png':'image/png','.webp':'image/webp'};
 http.createServer(async(req,res)=>{
   const url=new URL(req.url,'http://localhost');
   if(!url.pathname.startsWith(prefix)){res.writeHead(404).end();return;}

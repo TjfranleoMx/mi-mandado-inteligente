@@ -1,4 +1,4 @@
-# Estado de verificación — versión 0.3
+# Estado de verificación — versión 0.4
 
 Pruebas originales: 8/8. Se agregaron regresiones de lógica, almacenamiento y caché.
 El detalle de resultados se entrega en el informe de verificación.
@@ -36,3 +36,9 @@ La confirmación Android anterior corresponde a v0.2; v0.3 se prueba en Chrome
 con perfil móvil y escritorio y no atribuye otra prueba manual al teléfono.
 
 Se verifica también g/kg sin alterar tarifa por kilo, historial y corrección de ticket, y actualización de datos v0.2 con aceptación o rechazo de compras previas. Los menús guardados e imágenes quedan fuera de esta entrega.
+
+## Verificación v0.4
+
+Biblioteca y planes semanales independientes; lunes configurable y compra del fin de semana previo; fotos locales y de paquete JSON; revisión manual de casa con unidades compatibles; bloques de preparación numerados. Pruebas de respaldo sin repetición de imágenes, restauración de una biblioteca válida mayor a 25 MB y conservación de una receta retirada que otra semana utiliza. Las pruebas anteriores de compras, g/kg, temas e instalación se conservan.
+
+Las pruebas de teléfono confirmadas por el usuario corresponden a v0.2. La v0.4 requiere verificación de publicación y se prueba con Chrome real en Windows y perfiles de pantalla móvil/escritorio; no se atribuye una nueva prueba física al teléfono.

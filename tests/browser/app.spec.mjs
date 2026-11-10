@@ -2,7 +2,7 @@ import {test,expect,chromium} from '@playwright/test';
 import {mkdtemp,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
-const nav=(page,view)=>page.locator(`#${test.info().project.name.startsWith('movil')?'mobile':'desktop'}-nav [data-view="${view}"]`).click();
+const nav=async(page,view)=>{await page.locator(`#${test.info().project.name.startsWith('movil')?'mobile':'desktop'}-nav [data-view="${view}"]`).click();if(view==='recetas')await page.locator('[data-action="menu-tab"][data-tab="recipes"]').first().click();};
 const pack={recipes:[{title:'Receta de prueba',servings:2,minutes:10,ingredients:[{name:'Arroz de prueba',quantity:1,unit:'kg',category:'Despensa'}],steps:['Lavar el arroz.','Cocinar y servir.']}]};
 async function ready(page){
   await page.goto('./');

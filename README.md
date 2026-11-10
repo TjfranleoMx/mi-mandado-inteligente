@@ -1,4 +1,4 @@
-# Mi Mandado Inteligente — versión 0.3
+# Mi Mandado Inteligente — versión 0.4
 
 Aplicación PWA **offline-first** para Android y computadora: recetas con pasos, menú semanal, lista editable, cantidades reales de compra, precios unitarios y totales, gastos por mes y categorías, historial de precios, respaldo JSON e importación rápida de recetas generadas en ChatGPT.
 
@@ -87,3 +87,29 @@ Las pruebas de navegador usan Chrome real con emulación móvil Pixel 7 y escrit
 Al actualizar, abre con conexión para descargar la nueva versión y vuelve a abrir la aplicación. No borres datos ni desinstales para actualizar.
 
 - Los pesos menores a 1 kg se muestran en gramos en recetas, mandado e historial. El precio de productos por peso se captura por kilo; 600 g a 120 MXN/kg dan 72 MXN. La unidad presentada cambia al terminar de editar, conservando cantidades y precios del registro original.
+
+## Versión 0.4: menús guardados, imágenes y revisión de casa
+
+En **Menús** encontrarás tres pestañas: **Menú semanal**, **Recetario** y **Guardados**.
+
+1. **Crear nuevo**: elige un lunes, escribe el nombre y asigna una receta a cada día. Puedes comprar el sábado o domingo anterior.
+2. **Revisar y generar lista**: anota los gramos, piezas o cantidades que ya tienes disponibles para ese menú. Solo se descuenta lo que indiques. Regenerar no vuelve a restarlo acumulativamente.
+3. **Guardar menú** conserva las recetas y sus imágenes tal como están. Al crear otra semana también se conserva el menú anterior. **Repetir menú** crea otra semana con compras y revisión de casa independientes.
+4. El selector **Semana que estás preparando** permite volver a listas y compras de otra semana sin borrarlas. Los gastos conservan la fecha real del ticket.
+5. En una receta, **Ir a la preparación** abre el apartado de bloques numerados, con instrucciones más separadas.
+
+Las fotos de ejemplo son ilustrativas, generadas con IA y optimizadas a WebP (aproximadamente 54–58 KB cada una). Puedes agregar una foto local en **Editar receta**. Se comprime en el dispositivo y no se sube a servidores. Las imágenes incluidas en archivos JSON deben ser PNG/JPEG/WebP en data URL, hasta 330 KB por imagen. No se aceptan enlaces externos ni SVG.
+
+### Importar un menú con sus imágenes
+
+Usa **Importar menú con imágenes** y elige un solo JSON. El archivo [ejemplo-menu-imagenes.json](./ejemplo-menu-imagenes.json) incluye dos recetas con sus imágenes y dos días asignados; es una demostración, no un plan alimentario personalizado. Confirma el nombre y el lunes antes de importar. Los demás días se pueden completar en **Editar menú**.
+
+Formato de menú: `format: "mi-mandado-menu"`, `version: 1`, `name`, `startDate` (lunes), `recipes` (recetas con `id` único e `image` opcional), `days` (arreglo de hasta siete IDs de recetas, lunes a domingo; cadena vacía para día sin elegir). Se mantiene la importación anterior de recetas sin menú. Límite del paquete: 5 MB.
+
+### Respaldo y actualización
+
+Los respaldos nuevos guardan las imágenes repetidas una sola vez y conservan biblioteca, semanas, listas, compras y alimentos disponibles. Se restauran también los respaldos v0.1/v0.2/v0.3. Un respaldo con imágenes de v0.4 requiere v0.4 o posterior. No se aplica el antiguo corte de 25 MB al restaurar bibliotecas legítimas; la validación de estructura y de imágenes se mantiene.
+
+Si retiras una receta del recetario y una semana ya la utiliza, se conserva para esa semana. Los menús guardados conservan su propia copia. Los datos de la versión anterior se mantienen en una semana cuyo lunes puedes ajustar en **Editar menú**.
+
+Todo funciona localmente tras la primera carga: fotos, planes, biblioteca y revisión de casa. No se añade nube, analítica, cuentas, QR de importación ni desayunos en esta entrega.

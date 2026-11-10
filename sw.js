@@ -1,8 +1,8 @@
 // Aislar la caché de otras aplicaciones en el mismo dominio.
 const BASE=new URL(self.registration.scope);
 const PREFIX=`mi-mandado:${BASE.pathname}:`;
-const CACHE=PREFIX+'0.3.0';
-const ASSETS=['./','./index.html','./styles.css','./app.mjs','./core.mjs','./storage.mjs','./manifest.webmanifest','./icon.svg','./icon-192.png','./icon-512.png'];
+const CACHE=PREFIX+'0.4.0';
+const ASSETS=['./','./index.html','./styles.css','./app.mjs','./core.mjs','./storage.mjs','./menus.mjs','./menu-ui.mjs','./media.mjs','./backup.mjs','./images/pollo-calabacitas.webp','./images/atun-nopales.webp','./manifest.webmanifest','./icon.svg','./icon-192.png','./icon-512.png'];
 const URLS=ASSETS.map(path=>new URL(path,BASE).href);
 self.addEventListener('install',event=>{
   event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(URLS.map(url=>new Request(url,{cache:'reload'})))).then(()=>self.skipWaiting()));
