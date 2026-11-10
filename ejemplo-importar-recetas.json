@@ -1,0 +1,22 @@
+{
+  "recipes": [
+    {
+      "title": "Ensalada tibia de pollo y verduras (ejemplo de importación)",
+      "servings": 3,
+      "minutes": 30,
+      "tags": ["Ejemplo"],
+      "ingredients": [
+        {"name": "Pechuga de pollo", "quantity": 0.6, "unit": "kg", "category": "Proteínas"},
+        {"name": "Calabacita", "quantity": 500, "unit": "g", "category": "Verduras y frutas"},
+        {"name": "Jitomate", "quantity": 0.3, "unit": "kg", "category": "Verduras y frutas"},
+        {"name": "Aceite de oliva", "quantity": 15, "unit": "ml", "category": "Despensa"}
+      ],
+      "steps": [
+        "Lava y desinfecta las verduras y corta los ingredientes.",
+        "Cocina por completo la pechuga de pollo en un sartén; el centro debe alcanzar 74 °C.",
+        "Saltea las verduras con el aceite y mezcla con el pollo.",
+        "Sirve en tres porciones y ajusta los acompañamientos de acuerdo con el plan individual."
+      ]
+    }
+  ]
+}

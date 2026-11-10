@@ -1,0 +1,9 @@
+node_modules/
+test-results/
+playwright-report/
+dist/
+*.log
+respaldo*.json
+gastos*.csv
+*.zip
+.env*
