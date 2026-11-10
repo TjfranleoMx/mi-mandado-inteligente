@@ -71,8 +71,12 @@ test('recetas, compra, importación, respaldo y reapertura sin conexión',async(
   await nav(offlinePage,'recetas');
   await expect(offlinePage.getByText('Receta de prueba',{exact:true})).toBeVisible();
   await offlinePage.getByRole('button',{name:'Generar lista del menú'}).click();
-  await expect(offlinePage.getByLabel('Cantidad comprada de Arroz de prueba')).toBeVisible();
-  await offlinePage.getByLabel('Cantidad comprada de Arroz de prueba').fill('2');
+  await expect(offlinePage.locator('.shopping-item')).toHaveCount(0);
+  await nav(offlinePage,'recetas');
+  await offlinePage.locator('.recipe-card').filter({hasText:'Receta de prueba'}).locator('[data-action="recipe-times"]').selectOption('2');
+  await offlinePage.getByRole('button',{name:'Generar lista del menú'}).click();
+  await expect(offlinePage.getByLabel('Cantidad planeada de Arroz de prueba')).toHaveValue('500');
+  await offlinePage.getByLabel('Cantidad comprada de Arroz de prueba').fill('2000');
   await offlinePage.getByLabel('Precio por kg de Arroz de prueba').fill('50');
   await offlinePage.getByLabel('Marcar Arroz de prueba como comprado').check();
   await offlinePage.locator('[data-action="finalize-shopping"]').click();
@@ -92,6 +96,7 @@ test('manifest instalable, iconos y pantalla sin desbordamiento',async()=>{
   try{
   const page=await context.newPage();
   await ready(page);
+  await nav(page,'ajustes');await page.getByLabel('Apariencia').selectOption('dark');
   const cdp=await context.newCDPSession(page);
   const manifest=await cdp.send('Page.getAppManifest');
   expect(manifest.errors).toEqual([]);
@@ -103,6 +108,14 @@ test('manifest instalable, iconos y pantalla sin desbordamiento',async()=>{
   for(const view of ['inicio','recetas','mandado','gastos','ajustes']){
     await nav(page,view);
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBeTruthy();
+    const contrast=await page.evaluate(()=>{
+      const rgb=value=>value.match(/[\d.]+/g).slice(0,3).map(Number).map(v=>{v/=255;return v<=0.04045?v/12.92:((v+0.055)/1.055)**2.4;});
+      const luminance=value=>{const c=rgb(value);return c[0]*0.2126+c[1]*0.7152+c[2]*0.0722;};
+      const root=getComputedStyle(document.documentElement);
+      const a=luminance(root.color),b=luminance(root.backgroundColor);
+      return (Math.max(a,b)+0.05)/(Math.min(a,b)+0.05);
+    });
+    expect(contrast).toBeGreaterThanOrEqual(4.5);
   }
   }finally{await context.close();await rm(profile,{recursive:true,force:true});}
 });
@@ -134,4 +147,127 @@ test('agregar receta y artículo manual; restaurar respaldo y guardar con altern
   await nav(page,'ajustes');
   await expect(page.locator('#budget')).toHaveValue('300');
   await expect(page.locator('#default-store')).toHaveValue('Tienda restaurada');
+});
+
+
+test('compras registradas no reaparecen; nueva semana permite comprarlas de nuevo',async({page,context})=>{
+ await ready(page);await nav(page,'recetas');
+ await page.locator('#import-recipes-input').setInputFiles({name:'recetas.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(pack))});
+ const recipe=page.locator('.recipe-card').filter({hasText:'Receta de prueba'});
+ await recipe.locator('[data-action="toggle-recipe"]').check();
+ await page.locator('[data-action="generate-list"]').click();
+ await page.getByLabel('Cantidad comprada de Arroz de prueba').fill('1');
+ await page.getByLabel('Precio por kg de Arroz de prueba').fill('20');
+ await page.getByLabel('Marcar Arroz de prueba como comprado').check();
+ await page.locator('[data-action="finalize-shopping"]').click();
+ await page.locator('#checkout-form button[type="submit"]').click();
+ await expect.poll(()=>page.evaluate(async()=>{const {loadState}=await import('./storage.mjs');return (await loadState()).purchases.length;})).toBe(1);
+ await context.setOffline(true);await page.reload();await nav(page,'recetas');
+ await page.locator('[data-action="generate-list"]').click();
+ await expect(page.locator('.shopping-item')).toHaveCount(0);
+ await page.reload();await nav(page,'recetas');
+ await recipe.locator('[data-action="recipe-times"]').selectOption('2');
+ await page.locator('[data-action="generate-list"]').click();
+ await expect(page.getByLabel('Cantidad planeada de Arroz de prueba')).toHaveValue('1');
+ page.once('dialog',dialog=>dialog.accept());
+ await page.locator('[data-action="new-week"]').click();
+ await recipe.locator('[data-action="toggle-recipe"]').check();
+ await page.locator('[data-action="generate-list"]').click();
+ await expect(page.getByLabel('Cantidad planeada de Arroz de prueba')).toHaveValue('1');
+ await nav(page,'gastos');await expect(page.locator('.purchase')).toHaveCount(1);
+});
+
+test('tema oscuro, claro y sistema conservan preferencia sin internet',async({page,context})=>{
+ await page.emulateMedia({colorScheme:'dark'});await ready(page);
+ const bg=()=>page.evaluate(()=>getComputedStyle(document.documentElement).backgroundColor);
+ await nav(page,'ajustes');
+ const select=page.getByLabel('Apariencia');await expect(select).toHaveValue('system');
+ await select.selectOption('dark');
+ const dark=await bg();expect(dark).not.toBe('rgb(246, 248, 245)');
+ await expect.poll(()=>page.evaluate(async()=>{const {loadState}=await import('./storage.mjs');return (await loadState()).theme;})).toBe('dark');
+ await context.setOffline(true);await page.reload();await nav(page,'ajustes');
+ await expect(select).toHaveValue('dark');expect(await bg()).toBe(dark);
+ await select.selectOption('light');expect(await bg()).toBe('rgb(246, 248, 245)');
+ await page.emulateMedia({colorScheme:'light'});await select.selectOption('system');
+ expect(await bg()).toBe('rgb(246, 248, 245)');
+ await page.emulateMedia({colorScheme:'dark'});await expect.poll(bg).toBe(dark);
+ await select.selectOption('light');await page.emulateMedia({colorScheme:'dark'});
+ expect(await bg()).toBe('rgb(246, 248, 245)');
+});
+
+
+test('compra parcial mantiene lo pendiente sin tener que regenerar',async({page})=>{
+ await ready(page);await nav(page,'recetas');
+ await page.locator('#import-recipes-input').setInputFiles({name:'recetas.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(pack))});
+ await page.locator('.recipe-card').filter({hasText:'Receta de prueba'}).locator('[data-action="toggle-recipe"]').check();
+ await page.locator('[data-action="generate-list"]').click();
+ await page.getByLabel('Cantidad comprada de Arroz de prueba').fill('0,4');
+ await page.getByLabel('Precio por kg de Arroz de prueba').fill('20');
+ await page.getByLabel('Marcar Arroz de prueba como comprado').check();
+ await page.locator('[data-action="finalize-shopping"]').click();
+ await page.locator('#checkout-form button[type="submit"]').click();
+ await nav(page,'mandado');
+ await expect(page.getByLabel('Cantidad planeada de Arroz de prueba')).toHaveValue('600');
+ await expect(page.getByLabel('Marcar Arroz de prueba como comprado')).not.toBeChecked();
+ await expect(page.getByLabel('Cantidad comprada de Arroz de prueba')).toHaveValue('');
+});
+
+
+test('gramos en recetas y compras mantienen el precio por kilo',async({page})=>{
+ await ready(page);await nav(page,'recetas');
+ await page.locator('[data-action="view-recipe"]').first().click();
+ await expect(page.locator('.ingredient-list').getByText('600 g',{exact:true})).toHaveCount(2);
+ await page.locator('.icon-close').click();
+ await page.locator('[data-action="toggle-recipe"]').first().check();
+ await page.locator('[data-action="generate-list"]').click();
+ const actual=page.getByLabel('Cantidad comprada de Pechuga de pollo');
+ await expect(page.getByLabel('Cantidad planeada de Pechuga de pollo')).toHaveValue('600');
+ await actual.fill('600');await page.getByLabel('Precio por kg de Pechuga de pollo').fill('120');
+ await expect(page.getByLabel('Total pagado por Pechuga de pollo')).toHaveValue('72');
+ await actual.fill('1300');await page.getByLabel('Precio por kg de Pechuga de pollo').click();
+ await expect(actual).toHaveValue('1.3');
+ await expect(page.getByLabel('Total pagado por Pechuga de pollo')).toHaveValue('156');
+ await actual.fill('0,6');await page.getByLabel('Precio por kg de Pechuga de pollo').click();
+ await expect(actual).toHaveValue('600');
+ await expect(page.getByLabel('Total pagado por Pechuga de pollo')).toHaveValue('72');
+ await page.getByLabel('Marcar Pechuga de pollo como comprado').check();
+ await page.locator('[data-action="finalize-shopping"]').click();await page.locator('#checkout-form button[type="submit"]').click();
+ await page.locator('.purchase summary').click();
+ await expect(page.locator('.purchase-items')).toContainText('600 g');
+ await page.locator('[data-action="edit-purchase"]').click();
+ await expect(page.locator('[data-purchase-quantity="0"]')).toHaveValue('600');
+ await page.locator('#purchase-edit-form button[type="submit"]').click();
+ await expect.poll(()=>page.evaluate(async()=>{const {loadState}=await import('./storage.mjs');return (await loadState()).purchases[0].items[0].actualQty;})).toBe(0.6);
+});
+
+
+for(const accept of [true,false])test(`actualizar v0.2 conserva compras y pregunta una vez: ${accept?'asociar':'no asociar'}`,async({page})=>{
+ await ready(page);
+ await page.evaluate(async()=>{
+  const {makeInitialState}=await import('./core.mjs');const {persistState}=await import('./storage.mjs');
+  const raw=makeInitialState();delete raw.menuPurchaseIds;delete raw.theme;
+  raw.selected=[{recipeId:raw.recipes[0].id,times:1}];
+  const d=new Date(),date=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  raw.purchases=[{id:'migracion-prueba',date,items:[{name:'Pechuga de pollo',unit:'kg',actualQty:0.6,totalPaid:72,source:'recipe'}]}];
+  await persistState(raw);
+ });
+ let prompts=0;page.on('dialog',async dialog=>{prompts++;await(accept?dialog.accept():dialog.dismiss());});
+ await page.reload();await expect(page.locator('.hero')).toBeVisible();
+ await expect.poll(()=>page.evaluate(async()=>{const {loadState}=await import('./storage.mjs');return(await loadState()).menuMigrationPending;})).toBe(false);
+ await page.reload();await nav(page,'recetas');await page.locator('[data-action="generate-list"]').click();
+ await expect(page.getByLabel('Cantidad planeada de Pechuga de pollo')).toHaveCount(accept?0:1);
+ await nav(page,'gastos');await expect(page.locator('.purchase')).toHaveCount(1);expect(prompts).toBe(1);
+});
+
+test('ingrediente guardado en gramos conserva tarifa por kilo y remanente',async({page})=>{
+ await ready(page);await nav(page,'recetas');
+ const grams=structuredClone(pack);grams.recipes[0].ingredients[0].quantity=600;grams.recipes[0].ingredients[0].unit='g';
+ await page.locator('#import-recipes-input').setInputFiles({name:'gramos.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(grams))});
+ await page.locator('.recipe-card').filter({hasText:'Receta de prueba'}).locator('[data-action="toggle-recipe"]').check();
+ await page.locator('[data-action="generate-list"]').click();
+ await page.getByLabel('Cantidad comprada de Arroz de prueba').fill('400');await page.getByLabel('Precio por kg de Arroz de prueba').fill('120');
+ await expect(page.getByLabel('Total pagado por Arroz de prueba')).toHaveValue('48');
+ await page.getByLabel('Marcar Arroz de prueba como comprado').check();await page.locator('[data-action="finalize-shopping"]').click();await page.locator('#checkout-form button[type="submit"]').click();
+ await nav(page,'mandado');await expect(page.getByLabel('Cantidad planeada de Arroz de prueba')).toHaveValue('200');
+ await expect(page.locator('.item-footer')).toContainText('$120.00/kg');
 });

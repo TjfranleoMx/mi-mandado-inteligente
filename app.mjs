@@ -1,6 +1,13 @@
-import {CATEGORIES,UNITS,numeric,positive,nonnegative,round,money,uid,normalizedName,convert,exampleRecipes,validateRecipe,parseRecipePack,mergeRecipes,generateShoppingList,applyShoppingEdit,priceOf,unitPriceHistory,totalsForShopping,finalizePurchase,purchaseTotal,spendingSummary,weekSummary,validateBackup,validDate} from './core.mjs';
+import {CATEGORIES,UNITS,numeric,positive,nonnegative,round,money,uid,normalizedName,convert,exampleRecipes,validateRecipe,parseRecipePack,mergeRecipes,generateShoppingList,applyShoppingEdit,priceOf,unitPriceHistory,totalsForShopping,finalizePurchase,purchaseTotal,spendingSummary,weekSummary,weekRange,validateBackup,validDate} from './core.mjs';
 import {loadState,persistState,storageMode} from './storage.mjs';
 
+const systemTheme=window.matchMedia('(prefers-color-scheme: dark)');
+function applyTheme(){
+  const dark=state?.theme==='dark'||(state?.theme==='system'&&systemTheme.matches);
+  document.documentElement.dataset.theme=dark?'dark':'light';
+  document.querySelector('meta[name="theme-color"]').content=dark?'#17201e':'#08665a';
+}
+systemTheme.addEventListener('change',()=>{if(state?.theme==='system')applyTheme();});
 let state,view='inicio',searchText='',monthFilter='',saveTimer,saveQueue=Promise.resolve(),toastTimer;
 const $=id=>document.getElementById(id);
 const escapeHTML=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -9,6 +16,32 @@ const currentDate=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.
 const currentMonth=()=>currentDate().slice(0,7);
 const numberValue=v=>Number.isFinite(numeric(v))?numeric(v):0;
 const formattedQuantity=v=>Number.isFinite(numeric(v))?String(round(numeric(v),4)):'';
+// Las cantidades se muestran en g/kg; los valores y precios conservan su unidad almacenada.
+function quantityView(value,unit){
+  const amount=numeric(value);
+  if(['kg','g'].includes(unit)&&Number.isFinite(amount)&&amount>=0){
+    const kg=convert(amount,unit,'kg'),shownUnit=kg<1?'g':'kg';
+    return {value:formattedQuantity(convert(amount,unit,shownUnit)),unit:shownUnit};
+  }
+  return {value:formattedQuantity(value),unit};
+}
+const amountText=(value,unit)=>{const shown=quantityView(value,unit);return `${shown.value} ${shown.unit}`;};
+const priceUnit=item=>['kg','g'].includes(item.unit)?'kg':item.unit;
+const shownPrice=item=>nonnegative(item.unitPrice)?formattedQuantity(numeric(item.unitPrice)*convert(1,priceUnit(item),item.unit)):item.unitPrice;
+function finishQuantityInput(el,item,field){
+  const shown=quantityView(nonnegative(item[field])?item[field]:item.plannedQty,item.unit);
+  el.dataset.inputUnit=shown.unit;
+  el.value=nonnegative(item[field])?shown.value:item[field];
+  const label=el.closest('.field')?.querySelector('label');
+  if(label)label.textContent=`${field==='actualQty'?'Cantidad real':'Cantidad planeada'} (${shown.unit})`;
+}
+function resolveMenuMigration(){
+  if(!state.menuMigrationPending)return;
+  const range=weekRange(currentDate());
+  const candidates=state.purchases.filter(p=>p.date>=range.start&&p.date<=range.end&&p.items.some(i=>i.source==='recipe'));
+  if(candidates.length&&confirm('Actualizamos tu lista del mandado. ¿Las compras de recetas de esta semana pertenecen al menú que tienes seleccionado? Aceptar: descontarlas del menú actual. Cancelar: conservarlas solo en el historial. No se borrará ninguna compra.'))state.menuPurchaseIds=candidates.map(p=>p.id);
+  state.menuMigrationPending=false;saveSoon(true);
+}
 const optionList=(values,selected)=>values.map(x=>`<option value="${attr(x)}" ${selected===x?'selected':''}>${escapeHTML(x)}</option>`).join('');
 const subtitle=(title,desc,right='')=>`<div class="section-title"><div><h2>${title}</h2>${desc?`<p>${desc}</p>`:''}</div>${right}</div>`;
 const button=(label,action,kind='outline',extra='')=>`<button type="button" class="button ${kind}" data-action="${action}" ${extra}>${label}</button>`;
@@ -57,11 +90,11 @@ function recipesView(){
 }
 function shoppingView(){
   const summary=totalsForShopping(state.shopping,state.purchases);
-  return `<div class="callout">🧾 <strong>Receta ≠ compra real.</strong> Aquí ajustas lo que pediste, lo que efectivamente recibiste y cuánto pagaste. La receta original no se modifica.</div>
+  return `<div class="callout">🧾 <strong>Receta ≠ compra real.</strong> Aquí ajustas lo que pediste, lo que efectivamente recibiste y cuánto pagaste. La receta original no se modifica. Los pesos menores a un kilo se muestran en gramos y el precio se captura por kilo. Al regenerar descontamos las compras registradas de este menú.</div>
   <div class="stats">${stat('Presupuesto',money(state.budgetWeekly),'Límite orientativo','⌁')}${stat('Total marcado',`<span id="shopping-marked">${money(summary.paid)}</span>`,'Lo pagado por productos marcados','▤')}${stat('Disponible',`<span id="shopping-available">${money(state.budgetWeekly-summary.paid)}</span>`,`${summary.boughtCount} de ${state.shopping.length} comprados`,'✓')}</div>
   ${subtitle('Lista de esta semana',`${state.shopping.length} productos. Ajusta la cantidad y el precio real en la tienda.`,`${button('↻ Desde mis recetas','generate-list','outline')} ${button('＋ Agregar artículo','add-item','primary')}`)}
   <div class="row between wrap" style="margin:-5px 0 16px"><p class="hint" style="margin:0">Estimado según precios de compras anteriores: <strong>${money(summary.estimate)}</strong> (sin precio previo: no contabilizado).</p>${button('Empezar una semana nueva','new-week','ghost sm')}</div>
-  ${!state.shopping.length?`<div class="empty"><div class="emoji">🛒</div><h3>Tu lista está vacía</h3><p>Elige recetas o agrega un artículo manualmente.</p>${button('Seleccionar recetas','go-recipes','primary')}</div>`:
+  ${!state.shopping.length?`<div class="empty"><div class="emoji">🛒</div><h3>Tu lista está vacía</h3><p>Ya cubriste el menú o aún no has elegido recetas. Puedes agregar artículos o empezar una semana nueva.</p>${button('Seleccionar recetas','go-recipes','primary')}</div>`:
   `<div class="shopping-list">${state.shopping.map(renderShoppingItem).join('')}</div>
   <div class="card" style="margin-top:18px"><div class="row between wrap"><div><h3>Total registrado: <span id="shopping-paid">${money(summary.paid)}</span></h3><p class="hint" id="shopping-remaining">Restante del presupuesto: ${money(state.budgetWeekly-summary.paid)}</p></div>${button('✓ Registrar compra','finalize-shopping','primary')}</div><div class="line"></div><p class="hint">Solo se guardarán en el historial los artículos marcados como comprados y con cantidad y precio reales. Los pendientes permanecerán en tu lista.</p></div>`}
   <div class="callout warn" style="margin-top:16px">Los precios reales no se consultan automáticamente en tiendas: tú los capturas con el ticket o en la tienda. La próxima vez utilizaremos tu último precio registrado como referencia.</div>`;
@@ -71,12 +104,14 @@ function renderShoppingItem(item){
   const price=priceOf(item);
   const planned=numberValue(item.plannedQty),actual=numberValue(item.actualQty);
   const extra=actual>0?round(actual-planned,4):0;
+  const plannedView=quantityView(item.plannedQty,item.unit);
+  const actualView=quantityView(nonnegative(item.actualQty)?item.actualQty:item.plannedQty,item.unit);
   return `<article class="shopping-item ${item.checked?'done':''}" data-shopping-row="${attr(item.id)}"><div class="shopping-heading"><div class="left"><input type="checkbox" aria-label="Marcar ${attr(item.name)} como comprado" data-action="check-item" data-id="${attr(item.id)}" ${item.checked?'checked':''}/><div><div class="name">${escapeHTML(item.name)}</div><div class="small">${escapeHTML(item.category)} · ${item.source==='manual'?'Agregado por ti':'Desde receta'}</div></div></div>${button('Quitar','delete-item','ghost sm',`data-id="${attr(item.id)}" aria-label="Quitar ${attr(item.name)}"`)}</div>
-  <div class="edit-grid"><div class="field"><label>Cantidad planeada (${item.unit})</label><input type="text" inputmode="decimal" data-item-field="plannedQty" data-id="${attr(item.id)}" aria-label="Cantidad planeada de ${attr(item.name)}" value="${attr(formattedQuantity(item.plannedQty))}"/></div>
-  <div class="field"><label>Cantidad real (${item.unit})</label><input type="text" inputmode="decimal" placeholder="Ej. 1,300" data-item-field="actualQty" data-id="${attr(item.id)}" aria-label="Cantidad comprada de ${attr(item.name)}" value="${attr(item.actualQty)}"/></div>
-  <div class="field"><label>Precio por ${item.unit} ($)</label><input type="text" inputmode="decimal" placeholder="Ej. 120" data-item-field="unitPrice" data-id="${attr(item.id)}" aria-label="Precio por ${item.unit} de ${attr(item.name)}" value="${attr(item.unitPrice)}"/></div>
+  <div class="edit-grid"><div class="field"><label>Cantidad planeada (${plannedView.unit})</label><input type="text" inputmode="decimal" data-item-field="plannedQty" data-input-unit="${plannedView.unit}" data-id="${attr(item.id)}" aria-label="Cantidad planeada de ${attr(item.name)}" value="${attr(plannedView.value)}"/></div>
+  <div class="field"><label>Cantidad real (${actualView.unit})</label><input type="text" inputmode="decimal" placeholder="Ej. 1,300" data-item-field="actualQty" data-input-unit="${actualView.unit}" data-id="${attr(item.id)}" aria-label="Cantidad comprada de ${attr(item.name)}" value="${attr(nonnegative(item.actualQty)?actualView.value:item.actualQty)}"/></div>
+  <div class="field"><label>Precio por ${priceUnit(item)} ($)</label><input type="text" inputmode="decimal" placeholder="Ej. 120" data-item-field="unitPrice" data-id="${attr(item.id)}" aria-label="Precio por ${priceUnit(item)} de ${attr(item.name)}" value="${attr(shownPrice(item))}"/></div>
   <div class="field"><label>Total pagado ($)</label><input type="text" inputmode="decimal" placeholder="Ej. 156" data-item-field="totalPaid" data-id="${attr(item.id)}" aria-label="Total pagado por ${attr(item.name)}" value="${attr(item.totalPaid)}"/></div></div>
-  <div class="item-footer"><span>${Number.isFinite(lastPrice)?`Último precio: ${money(lastPrice)}/${escapeHTML(item.unit)} · `:''}<span data-extra="${attr(item.id)}">${actual>planned?`Compraste ${formattedQuantity(extra)} ${escapeHTML(item.unit)} extra`:actual>0&&actual<planned?'Compraste menos de lo planeado':'Cantidad editable'}</span></span><strong data-item-total="${attr(item.id)}">${Number.isFinite(price)?money(price):'Sin precio real'}</strong></div></article>`;
+  <div class="item-footer"><span>${Number.isFinite(lastPrice)?`Último precio: ${money(lastPrice*convert(1,priceUnit(item),item.unit))}/${escapeHTML(priceUnit(item))} · `:''}<span data-extra="${attr(item.id)}">${actual>planned?`Compraste ${amountText(extra,item.unit)} extra`:actual>0&&actual<planned?'Compraste menos de lo planeado':'Cantidad editable'}</span></span><strong data-item-total="${attr(item.id)}">${Number.isFinite(price)?money(price):'Sin precio real'}</strong></div></article>`;
 }
 function expensesView(){
   const months=[...new Set([currentMonth(),...state.purchases.map(x=>x.date.slice(0,7))])].sort().reverse();
@@ -91,12 +126,13 @@ function expensesView(){
   <div class="grid-2"><section class="card"><h3>Gasto por categoría</h3><div class="line"></div>${Object.entries(overview.categories).filter(([,sum])=>sum>0).sort((a,b)=>b[1]-a[1]).map(([category,sum])=>`<div class="category-bar"><span>${escapeHTML(category)}</span><div class="track"><div class="fill" style="width:${Math.round(sum/max*100)}%"></div></div><strong>${money(sum)}</strong></div>`).join('')||'<p class="hint">Registra tu primera compra para ver las categorías.</p>'}</section>
   <section class="card"><h3>Resumen del mes</h3><div class="line"></div><div class="row between"><span class="muted">Gasto de esta semana</span><strong>${money(thisWeek.total)}</strong></div><p class="hint">${thisWeek.start} al ${thisWeek.end} · ${thisWeek.count} compras</p><div class="line"></div><div class="row between"><span class="muted">Visitas a la tienda</span><strong>${overview.count}</strong></div><div class="line"></div><div class="row between"><span class="muted">Gasto promedio por visita</span><strong>${money(overview.count?overview.total/overview.count:0)}</strong></div><div class="line"></div><p class="hint">Los precios históricos se calculan a partir de los productos que registras. No se inventan ni se consultan precios de tiendas automáticamente.</p></section></div>
   ${subtitle('Compras guardadas','Toca cualquier compra para revisar su ticket y corregir importes.')}
-  <div class="stack">${purchases.map(p=>`<details class="purchase"><summary class="row between"><div><strong>${escapeHTML(p.store||'Tienda sin nombre')}</strong><div class="hint">${escapeHTML(p.date)} · ${p.items.length} artículos · ${money(purchaseTotal(p))}</div></div><span aria-hidden="true">⌄</span></summary><table class="purchase-items"><thead><tr><th>Artículo</th><th>Cantidad</th><th>Pagado</th></tr></thead><tbody>${p.items.map(i=>`<tr><td>${escapeHTML(i.name)}<br><small>${escapeHTML(i.category)}</small></td><td>${formattedQuantity(i.actualQty)} ${escapeHTML(i.unit)}</td><td>${money(i.totalPaid)}</td></tr>`).join('')}</tbody></table><div class="row wrap">${button('Corregir compra','edit-purchase','outline sm',`data-id="${attr(p.id)}"`)}${button('Eliminar','delete-purchase','danger sm',`data-id="${attr(p.id)}"`)}</div></details>`).join('')||'<div class="empty"><div class="emoji">📒</div><h3>Sin compras registradas en este mes</h3><p>Cuando termines una compra en «Mandado», aparecerá aquí.</p></div>'}</div>`;
+  <div class="stack">${purchases.map(p=>`<details class="purchase"><summary class="row between"><div><strong>${escapeHTML(p.store||'Tienda sin nombre')}</strong><div class="hint">${escapeHTML(p.date)} · ${p.items.length} artículos · ${money(purchaseTotal(p))}</div></div><span aria-hidden="true">⌄</span></summary><table class="purchase-items"><thead><tr><th>Artículo</th><th>Cantidad</th><th>Pagado</th></tr></thead><tbody>${p.items.map(i=>`<tr><td>${escapeHTML(i.name)}<br><small>${escapeHTML(i.category)}</small></td><td>${amountText(i.actualQty,i.unit)}</td><td>${money(i.totalPaid)}</td></tr>`).join('')}</tbody></table><div class="row wrap">${button('Corregir compra','edit-purchase','outline sm',`data-id="${attr(p.id)}"`)}${button('Eliminar','delete-purchase','danger sm',`data-id="${attr(p.id)}"`)}</div></details>`).join('')||'<div class="empty"><div class="emoji">📒</div><h3>Sin compras registradas en este mes</h3><p>Cuando termines una compra en «Mandado», aparecerá aquí.</p></div>'}</div>`;
 }
 function settingsView(){
   return `${subtitle('Tus preferencias','Estos datos se guardan solo en este dispositivo.')}
   <div class="grid-2"><section class="card"><h3>Presupuesto y tienda</h3><div class="line"></div><form id="settings-form" class="stack"><div class="field"><label for="budget">Presupuesto semanal (MXN)</label><input id="budget" name="budget" type="number" min="0" step="0.01" required value="${attr(state.budgetWeekly)}"/></div><div class="field"><label for="default-store">Tienda por defecto</label><input id="default-store" name="store" maxlength="80" value="${attr(state.defaultStore)}"/></div><button class="button primary" type="submit">Guardar preferencias</button></form></section>
   <section class="card"><h3>Respaldo de tus datos</h3><div class="line"></div><p class="hint">Descarga un respaldo completo en JSON. Si cambias de celular o borras el navegador, podrás restaurarlo.</p><div class="stack">${button('↓ Descargar respaldo','export-backup','primary')}${button('↑ Restaurar respaldo','restore-backup','outline')}${button('↓ Exportar gastos a CSV','export-csv','outline')}</div></section></div>
+  <section class="card" style="margin-top:18px"><h3>Aspecto de la aplicación</h3><p class="hint">Elige el aspecto que te resulte más cómodo. Se guarda solo en este dispositivo.</p><div class="field"><label for="theme-choice">Apariencia</label><select id="theme-choice"><option value="system" ${state.theme==='system'?'selected':''}>Como el celular</option><option value="light" ${state.theme==='light'?'selected':''}>Claro</option><option value="dark" ${state.theme==='dark'?'selected':''}>Oscuro</option></select></div></section>
   ${subtitle('Cómo funciona sin internet','Primero abre la aplicación con internet al menos una vez.')}
   <div class="grid-2"><div class="callout"><strong>📴 Trabajo sin conexión</strong><br>La interfaz se guarda en el dispositivo cuando se instala el servicio offline. Las recetas, el mandado y los gastos se almacenan localmente. No hace falta conexión para modificarlos.</div><div class="callout"><strong>🔒 Tu información</strong><br>No enviamos tus tickets ni tus recetas a ningún servidor. En esta versión no hay cuentas ni sincronización entre equipos. Haz respaldos regularmente.</div></div>
   <div class="callout warn" style="margin-top:20px"><strong>⚕️ Sobre las recetas</strong><br>Las recetas incluidas son ejemplos generales. Puedes cambiar ingredientes, porciones y pasos según tus preferencias.</div>
@@ -107,9 +143,10 @@ function closeModal(){if($('modal').open)$('modal').close();$('modal-content').i
 function modalTitle(title,description=''){return `<div class="modal-heading"><div><h2>${title}</h2>${description?`<p class="hint" style="margin:6px 0 0">${description}</p>`:''}</div><button type="button" class="icon-close" data-action="close-modal" aria-label="Cerrar">×</button></div>`;}
 function showRecipe(id){
   const r=getRecipe(id);if(!r)return;
-  openModal(`${modalTitle(escapeHTML(r.title),`${r.servings} porciones · ${r.minutes} minutos`)}<div class="recipe-details"><div class="callout">Estas instrucciones se guardan en tu teléfono y puedes consultarlas sin conexión.</div><h3 style="margin:22px 0 12px">Ingredientes</h3><ul class="ingredient-list">${r.ingredients.map(i=>`<li><strong>${escapeHTML(i.name)}</strong><span>${formattedQuantity(i.quantity)} ${escapeHTML(i.unit)}</span></li>`).join('')}</ul><h3 style="margin:22px 0 12px">Preparación paso a paso</h3><ol>${r.steps.map(s=>`<li>${escapeHTML(s)}</li>`).join('')}</ol><div class="row wrap">${button('Editar esta receta','edit-recipe','outline',`data-id="${attr(r.id)}"`)}${button('Cerrar','close-modal','ghost')}</div></div>`);
+  openModal(`${modalTitle(escapeHTML(r.title),`${r.servings} porciones · ${r.minutes} minutos`)}<div class="recipe-details"><div class="callout">Estas instrucciones se guardan en tu teléfono y puedes consultarlas sin conexión.</div><h3 style="margin:22px 0 12px">Ingredientes</h3><ul class="ingredient-list">${r.ingredients.map(i=>`<li><strong>${escapeHTML(i.name)}</strong><span>${amountText(i.quantity,i.unit)}</span></li>`).join('')}</ul><h3 style="margin:22px 0 12px">Preparación paso a paso</h3><ol>${r.steps.map(s=>`<li>${escapeHTML(s)}</li>`).join('')}</ol><div class="row wrap">${button('Editar esta receta','edit-recipe','outline',`data-id="${attr(r.id)}"`)}${button('Cerrar','close-modal','ghost')}</div></div>`);
 }
 function ingredientRow(i={name:'',quantity:1,unit:'kg',category:'Verduras y frutas'}){
+  const shown=quantityView(i.quantity,i.unit);i={...i,quantity:shown.value,unit:shown.unit};
   return `<div class="ingredient-editor"><input aria-label="Ingrediente" placeholder="Ingrediente" data-ingredient="name" maxlength="90" required value="${attr(i.name)}"/><input aria-label="Cantidad" type="text" inputmode="decimal" data-ingredient="quantity" placeholder="1" required value="${attr(i.quantity)}"/><select aria-label="Unidad" data-ingredient="unit">${optionList(UNITS,i.unit)}</select><select class="category-field" aria-label="Categoría" data-ingredient="category">${optionList(CATEGORIES,i.category)}</select><button type="button" data-action="remove-ingredient-row" aria-label="Quitar ingrediente">×</button></div>`;
 }
 function editRecipe(id){
@@ -134,7 +171,7 @@ function startCheckout(){
 }
 function editPurchase(id){
   const p=state.purchases.find(x=>x.id===id);if(!p)return;
-  openModal(`${modalTitle('Corregir compra',`${escapeHTML(p.store)} · ${escapeHTML(p.date)}`)}<form id="purchase-edit-form" data-id="${attr(p.id)}" class="stack"><div class="field"><label>Fecha</label><input type="date" name="date" value="${attr(p.date)}" required/></div><div class="field"><label>Tienda principal</label><input name="store" value="${attr(p.store)}" maxlength="80"/></div><div class="line"></div>${p.items.map((i,j)=>`<div class="card" style="padding:12px"><strong>${escapeHTML(i.name)}</strong><p class="hint">Precio y cantidad reales del ticket</p><div class="form-row"><div class="field"><label>Cantidad (${escapeHTML(i.unit)})</label><input data-purchase-quantity="${j}" type="text" inputmode="decimal" value="${attr(i.actualQty)}"/></div><div class="field"><label>Total pagado ($)</label><input data-purchase-total="${j}" type="text" inputmode="decimal" value="${attr(i.totalPaid)}"/></div></div></div>`).join('')}<button type="submit" class="button primary">Guardar correcciones</button></form>`);
+  openModal(`${modalTitle('Corregir compra',`${escapeHTML(p.store)} · ${escapeHTML(p.date)}`)}<form id="purchase-edit-form" data-id="${attr(p.id)}" class="stack"><div class="field"><label>Fecha</label><input type="date" name="date" value="${attr(p.date)}" required/></div><div class="field"><label>Tienda principal</label><input name="store" value="${attr(p.store)}" maxlength="80"/></div><div class="line"></div>${p.items.map((i,j)=>`<div class="card" style="padding:12px"><strong>${escapeHTML(i.name)}</strong><p class="hint">Precio y cantidad reales del ticket</p><div class="form-row"><div class="field"><label>Cantidad (${quantityView(i.actualQty,i.unit).unit})</label><input data-purchase-quantity="${j}" data-input-unit="${quantityView(i.actualQty,i.unit).unit}" type="text" inputmode="decimal" value="${quantityView(i.actualQty,i.unit).value}"/></div><div class="field"><label>Total pagado ($)</label><input data-purchase-total="${j}" type="text" inputmode="decimal" value="${attr(i.totalPaid)}"/></div></div></div>`).join('')}<button type="submit" class="button primary">Guardar correcciones</button></form>`);
 }
 function downloadFile(text,filename,mime='application/json'){
   const blob=new Blob([text],{type:mime});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),5000);
@@ -157,21 +194,23 @@ function updateShoppingNumbers(){
 function updateItemFromInput(el){
   const item=state.shopping.find(x=>x.id===el.dataset.id);if(!item)return;
   const field=el.dataset.itemField;
-  const text=el.value.trim();
+  let text=el.value.trim();
+  if(['plannedQty','actualQty'].includes(field)&&Number.isFinite(numeric(text)))text=String(convert(numeric(text),el.dataset.inputUnit||item.unit,item.unit));
+  if(field==='unitPrice'&&Number.isFinite(numeric(text)))text=String(numeric(text)*convert(1,item.unit,priceUnit(item)));
   if(!['plannedQty','actualQty','unitPrice','totalPaid'].includes(field))return;
   applyShoppingEdit(item,field,text);
   const row=el.closest('.shopping-item');
-  for(const f of ['unitPrice','totalPaid'])if(f!==field){const target=row?.querySelector(`[data-item-field="${f}"]`);if(target)target.value=item[f];}
+  for(const f of ['unitPrice','totalPaid'])if(f!==field){const target=row?.querySelector(`[data-item-field="${f}"]`);if(target)target.value=f==='unitPrice'?shownPrice(item):item[f];}
   const target=row?.querySelector('[data-item-total]');if(target)target.textContent=Number.isFinite(priceOf(item))?money(priceOf(item)):'Sin precio real';
   const extra=row?.querySelector('[data-extra]');
-  if(extra){const actual=numberValue(item.actualQty),planned=numberValue(item.plannedQty);extra.textContent=actual>planned?`Compraste ${formattedQuantity(actual-planned)} ${item.unit} extra`:actual>0&&actual<planned?'Compraste menos de lo planeado':'Cantidad editable';}
+  if(extra){const actual=numberValue(item.actualQty),planned=numberValue(item.plannedQty);extra.textContent=actual>planned?`Compraste ${amountText(actual-planned,item.unit)} extra`:actual>0&&actual<planned?'Compraste menos de lo planeado':'Cantidad editable';}
   updateShoppingNumbers();saveSoon();
 }
 function createShopping(){
   if(!state.selected.length){showToast('Primero elige una o más recetas.',true);go('recetas');return;}
-  if(state.shopping.some(x=>x.checked) && !confirm('Hay artículos marcados como comprados. ¿Quieres recalcular el menú? Se conservarán los precios de productos coincidentes, pero pueden reaparecer artículos de recetas si ya finalizaste otra compra.'))return;
-  state.shopping=generateShoppingList(state.recipes,state.selected,state.shopping);
-  saveSoon(true);go('mandado');showToast('Lista generada. Los artículos agregados manualmente se conservaron.');
+  if(state.shopping.some(x=>x.checked) && !confirm('Hay artículos marcados como comprados. ¿Quieres recalcular el menú? Se conservarán los precios de productos coincidentes, pero se descontarán las compras registradas del menú actual.'))return;
+  state.shopping=generateShoppingList(state.recipes,state.selected,state.shopping,state.purchases.filter(p=>state.menuPurchaseIds.includes(p.id)));
+  saveSoon(true);go('mandado');showToast('Lista actualizada: solo falta lo pendiente. Los artículos manuales se conservaron.');
 }
 function saveRecipeFromForm(form){
   const ingredientRows=[...form.querySelectorAll('#ingredient-rows .ingredient-editor')];
@@ -203,7 +242,7 @@ function handleAction(action,el){
     case 'delete-recipe':deleteRecipe(id);break;
     case 'close-modal':closeModal();break;
     case 'generate-list':createShopping();break;
-    case 'new-week':{if(!confirm('¿Empezar una semana nueva? Se borrará la lista actual y se desmarcarán las recetas elegidas. Tus compras ya registradas seguirán en el historial.'))return;state.shopping=[];state.selected=[];saveSoon(true);go('recetas');showToast('Nueva semana lista. Elige tus recetas.');break;}
+    case 'new-week':{if(!confirm('¿Empezar una semana nueva? Se borrará la lista actual y se desmarcarán las recetas elegidas. Tus compras ya registradas seguirán en el historial.'))return;state.shopping=[];state.selected=[];state.menuPurchaseIds=[];saveSoon(true);go('recetas');showToast('Nueva semana lista. Elige tus recetas.');break;}
     case 'delete-item':{const item=state.shopping.find(x=>x.id===id);if(!item)return;if(!confirm(`¿Quitar «${item.name}» de la lista actual?`))return;state.shopping=state.shopping.filter(x=>x.id!==id);saveSoon(true);render();break;}
     case 'finalize-shopping':startCheckout();break;
     case 'edit-purchase':editPurchase(id);break;
@@ -215,7 +254,7 @@ function handleAction(action,el){
     case 'reset-data':{
       if(!confirm('¿Borrar todas las recetas, listas y compras? Esta acción no se puede deshacer sin un respaldo.'))return;
       if(!confirm('Última confirmación: ¿estás seguro de querer borrar todo?'))return;
-      state={schemaVersion:1,budgetWeekly:0,defaultStore:'Mi tienda',recipes:structuredClone(exampleRecipes),selected:[],shopping:[],purchases:[]};saveSoon(true);go('inicio');showToast('Se restablecieron los datos de ejemplo.');break;
+      state={schemaVersion:1,budgetWeekly:0,defaultStore:'Mi tienda',recipes:structuredClone(exampleRecipes),selected:[],shopping:[],purchases:[],menuPurchaseIds:[],theme:state.theme};saveSoon(true);go('inicio');showToast('Se restablecieron los datos de ejemplo.');break;
     }
   }
 }
@@ -236,6 +275,7 @@ document.addEventListener('input',event=>{
 });
 document.addEventListener('change',event=>{
   const el=event.target;
+  if(el.id==='theme-choice'){state.theme=el.value;applyTheme();saveSoon(true);return;}
   if(el.dataset.action==='toggle-recipe'){
     if(el.checked && !selectedEntry(el.dataset.id))state.selected.push({recipeId:el.dataset.id,times:1});
     if(!el.checked)state.selected=state.selected.filter(x=>x.recipeId!==el.dataset.id);
@@ -245,7 +285,7 @@ document.addEventListener('change',event=>{
   }else if(el.dataset.action==='check-item'){
     const item=state.shopping.find(x=>x.id===el.dataset.id);if(item){item.checked=el.checked;saveSoon(true);render();}
   }else if(el.id==='month-filter'){monthFilter=el.value;render();}
-  else if(el.dataset.itemField){saveSoon(true);}
+  else if(el.dataset.itemField){const item=state.shopping.find(i=>i.id===el.dataset.id);if(item&&['plannedQty','actualQty'].includes(el.dataset.itemField))finishQuantityInput(el,item,el.dataset.itemField);saveSoon(true);}
 });
 document.addEventListener('submit',event=>{
   const form=event.target;event.preventDefault();
@@ -261,11 +301,16 @@ document.addEventListener('submit',event=>{
       saveSoon(true);closeModal();go('mandado');showToast('Artículo agregado.');
     }else if(form.id==='checkout-form'){
       const {purchase,total}=finalizePurchase(state,form.elements.date.value,form.elements.store.value);
-      state.purchases.push(purchase);state.shopping=state.shopping.filter(i=>!i.checked);
+      state.purchases.push(purchase);state.menuPurchaseIds.push(purchase.id);state.shopping=state.shopping.flatMap(item=>{
+        if(!item.checked)return [item];
+        const remaining=round(numeric(item.plannedQty)-numeric(item.actualQty),5);
+        if(item.source==='recipe'&&remaining>0)return [{...item,plannedQty:remaining,actualQty:'',unitPrice:'',totalPaid:'',checked:false,priceMode:'unit'}];
+        return [];
+      });
       saveSoon(true);closeModal();go('gastos');monthFilter=purchase.date.slice(0,7);render();showToast(`Compra guardada: ${money(total)}.`);
     }else if(form.id==='purchase-edit-form'){
       const p=state.purchases.find(x=>x.id===form.dataset.id);if(!p)throw new Error('No se encontró la compra.');
-      const updates=p.items.map((_,j)=>({qty:numeric(form.querySelector(`[data-purchase-quantity="${j}"]`).value),paid:numeric(form.querySelector(`[data-purchase-total="${j}"]`).value)}));
+      const updates=p.items.map((item,j)=>{const input=form.querySelector(`[data-purchase-quantity="${j}"]`);return {qty:convert(numeric(input.value),input.dataset.inputUnit||item.unit,item.unit),paid:numeric(form.querySelector(`[data-purchase-total="${j}"]`).value)};});
       if(updates.some(x=>!positive(x.qty)||!nonnegative(x.paid)))throw new Error('Todas las cantidades deben ser mayores que cero y los totales no pueden ser negativos.');
       if(!validDate(form.elements.date.value))throw new Error('La fecha no es válida.');
       p.date=form.elements.date.value;p.store=form.elements.store.value.trim();p.items.forEach((item,j)=>{item.actualQty=updates[j].qty;item.totalPaid=round(updates[j].paid,2);});
@@ -286,7 +331,7 @@ $('restore-input').addEventListener('change',async event=>{
   try{
     const restored=validateBackup(await readJSON(input.files[0]));
     if(!confirm('Restaurar reemplazará todas las recetas, listas y gastos de este dispositivo. ¿Deseas continuar?'))return;
-    state=restored;saveSoon(true);go('inicio');showToast('Respaldo restaurado.');
+    state=restored;resolveMenuMigration();applyTheme();saveSoon(true);go('inicio');showToast('Respaldo restaurado.');
   }catch(e){safeError(e);}finally{input.value='';}
 });
 window.addEventListener('online',updateNetwork);
@@ -297,7 +342,7 @@ $('modal').addEventListener('click',event=>{if(event.target===$('modal'))closeMo
 async function initialize(){
   try{state=await loadState();if(!state)throw new Error('El guardado está vacío.');}
   catch(e){console.error(e);$('content').innerHTML=`<div class="empty"><h3>No pudimos abrir los datos guardados</h3><p>${escapeHTML(e.message)}</p><p>Evita borrar el almacenamiento; intenta volver a cargar.</p></div>`;return;}
-  render();
+  resolveMenuMigration();applyTheme();render();
   if('serviceWorker' in navigator && location.protocol!=='file:')navigator.serviceWorker.register('./sw.js',{scope:'./'}).catch(err=>console.warn('No se pudo habilitar caché offline',err));
   if(navigator.storage?.persist)navigator.storage.persist().catch(()=>{});
 }

@@ -36,7 +36,7 @@ export const exampleRecipes = [
     {name:'Limón',quantity:2,unit:'pza',category:'Verduras y frutas'}],
    steps:['Lava y desinfecta las verduras. Cuece los nopales y escúrrelos.','Escurre el atún y mezcla con nopales, jitomate y cebolla picados.','Añade jugo de limón. Sirve en tres platos con una porción de aguacate en cada uno.','Acompaña con la porción de carbohidratos indicada en el plan alimentario de la persona, si corresponde.']}
 ];
-export const makeInitialState = () => ({schemaVersion:1, budgetWeekly:0, defaultStore:'Mi tienda', recipes:structuredClone(exampleRecipes), selected:[], shopping:[], purchases:[]});
+export const makeInitialState = () => ({schemaVersion:1, budgetWeekly:0, defaultStore:'Mi tienda', recipes:structuredClone(exampleRecipes), selected:[], shopping:[], purchases:[], menuPurchaseIds:[], theme:'system'});
 export function validateRecipe(raw){
   if (!raw || typeof raw!=='object') throw new Error('Receta inválida.');
   const title=String(raw.title??raw.nombre??'').trim();
@@ -78,7 +78,7 @@ export function mergeRecipes(existing,incoming){
   }
   return {recipes:[...existing,...added],count:added.length,skipped:incoming.length-added.length};
 }
-export function generateShoppingList(recipes,selected,existing=[]){
+export function generateShoppingList(recipes,selected,existing=[],purchases=[]){
   const byId=new Map(recipes.map(r=>[r.id,r]));
   const generated=new Map();
   for(const sel of selected){
@@ -92,6 +92,15 @@ export function generateShoppingList(recipes,selected,existing=[]){
         if(!item.recipeIds.includes(recipe.id))item.recipeIds.push(recipe.id);
       } else generated.set(key,{id:uid(),name:ing.name,category:ing.category,unit:ing.unit,plannedQty:round(ing.quantity*times,5),actualQty:'',unitPrice:'',totalPaid:'',priceMode:'unit',checked:false,store:'',source:'recipe',recipeIds:[recipe.id]});
     }
+  }
+  // Restar solo compras registradas del menú activo, con unidades compatibles.
+  for(const [key,item] of generated){
+    let bought=0;
+    for(const purchase of purchases)for(const entry of purchase.items){
+      if(entry.source==='recipe'&&sameProduct(entry,item)&&positive(entry.actualQty))bought+=convert(numeric(entry.actualQty),entry.unit,item.unit);
+    }
+    item.plannedQty=round(Math.max(0,item.plannedQty-bought),5);
+    if(item.plannedQty===0)generated.delete(key);
   }
   const oldByKey=new Map(existing.filter(i=>i.source==='recipe').map(i=>[keyOf(i),i]));
   const recipeItems=[...generated].map(([key,item])=>{
@@ -191,7 +200,8 @@ export function spendingSummary(purchases,month){
   for(const p of selected)for(const item of p.items){const c=CATEGORIES.includes(item.category)?item.category:'Otros';categoryTotals[c]+=numeric(item.totalPaid)||0;}
   return {count:selected.length,total:round(selected.reduce((s,p)=>s+purchaseTotal(p),0),2),categories:categoryTotals};
 }
-export function validateBackup(raw){
+const localDate=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
+export function validateBackup(raw,today=localDate()){
   if(!raw||typeof raw!=='object'||raw.schemaVersion!==1||!Array.isArray(raw.recipes)||!Array.isArray(raw.selected)||!Array.isArray(raw.shopping)||!Array.isArray(raw.purchases))throw new Error('El archivo no es un respaldo compatible de Mi Mandado Inteligente.');
   if(raw.recipes.length>2000||raw.shopping.length>3000||raw.purchases.length>10000)throw new Error('El respaldo supera los límites de seguridad.');
   const recipes=raw.recipes.map(validateRecipe);
@@ -211,5 +221,13 @@ export function validateBackup(raw){
       return {id:String(i.id||uid()).slice(0,100),name:String(i.name).slice(0,100),category:CATEGORIES.includes(i.category)?i.category:'Otros',unit:i.unit,plannedQty:nonnegative(i.plannedQty)?numeric(i.plannedQty):0,actualQty:numeric(i.actualQty),totalPaid:numeric(i.totalPaid),store:String(i.store||'').slice(0,80),source:i.source==='recipe'?'recipe':'manual'};
     })};
   });
-  return {schemaVersion:1,budgetWeekly:budget,defaultStore:String(raw.defaultStore||'Mi tienda').slice(0,80),recipes,selected,shopping,purchases};
+  // v0.2 no identificaba el menú: conservar compras sin asociarlas por fecha.
+  const range=weekRange(today);
+  const knownIds=new Set(purchases.map(p=>p.id));
+  const menuPurchaseIds=Array.isArray(raw.menuPurchaseIds)
+    ? [...new Set(raw.menuPurchaseIds.filter(id=>typeof id==='string'&&knownIds.has(id)))]
+    : [];
+  const menuMigrationPending=raw.menuMigrationPending===true||(!Array.isArray(raw.menuPurchaseIds)&&selected.length>0&&purchases.some(p=>p.date>=range.start&&p.date<=range.end&&p.items.some(i=>i.source==='recipe')));
+  const theme=['light','dark','system'].includes(raw.theme)?raw.theme:'system';
+  return {schemaVersion:1,budgetWeekly:budget,defaultStore:String(raw.defaultStore||'Mi tienda').slice(0,80),recipes,selected,shopping,purchases,menuPurchaseIds,menuMigrationPending,theme};
 }

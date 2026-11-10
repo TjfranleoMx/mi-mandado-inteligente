@@ -1,4 +1,4 @@
-# Estado de verificación — versión 0.2
+# Estado de verificación — versión 0.3
 
 Pruebas originales: 8/8. Se agregaron regresiones de lógica, almacenamiento y caché.
 El detalle de resultados se entrega en el informe de verificación.
@@ -22,7 +22,17 @@ en Chrome con perfil móvil y escritorio, tanto localmente como contra la URL p�
 
 ## Límites conservados
 
-Sin sincronización, lectura de tickets ni inventario automático. Las recetas de
-menú pueden reaparecer si se regenera después de registrar una compra; iniciar
-una nueva semana cuando corresponda. Los respaldos y gastos deben permanecer
+Sin sincronización, lectura de tickets ni inventario automático. Al regenerar se
+descuentan las compras de recetas del menú activo; iniciar una nueva semana
+reinicia ese descuento y conserva el historial. Los respaldos y gastos deben permanecer
 fuera del repositorio. El navegador puede eliminar datos: exportar respaldos.
+
+## Verificación v0.3
+
+22 pruebas de lógica/almacenamiento y 20 pruebas de navegador local aprobadas.
+Cobertura nueva: compras completas y parciales, conversión de unidades, menú
+ampliado, nueva semana, persistencia sin red y tres opciones de apariencia.
+La confirmación Android anterior corresponde a v0.2; v0.3 se prueba en Chrome
+con perfil móvil y escritorio y no atribuye otra prueba manual al teléfono.
+
+Se verifica también g/kg sin alterar tarifa por kilo, historial y corrección de ticket, y actualización de datos v0.2 con aceptación o rechazo de compras previas. Los menús guardados e imágenes quedan fuera de esta entrega.

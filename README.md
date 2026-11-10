@@ -1,4 +1,4 @@
-# Mi Mandado Inteligente — versión 0.2
+# Mi Mandado Inteligente — versión 0.3
 
 Aplicación PWA **offline-first** para Android y computadora: recetas con pasos, menú semanal, lista editable, cantidades reales de compra, precios unitarios y totales, gastos por mes y categorías, historial de precios, respaldo JSON e importación rápida de recetas generadas en ChatGPT.
 
@@ -51,7 +51,7 @@ Ver [`ejemplo-importar-recetas.json`](./ejemplo-importar-recetas.json). En la ap
 - Se requiere conexión una primera vez para instalar y descargar recursos estáticos. El modo sin internet puede probarse con modo avión **después de la primera carga correcta**.
 - No se incluyen precios reales, descuentos automáticos ni cálculos clínicos. Las recetas orientativas no sustituyen al personal médico.
 - No cuenta todavía con escáner de tickets, lector de códigos, integración directa desde ChatGPT ni sincronización con otros dispositivos.
-- Al regenerar la lista luego de finalizar una compra, los artículos de recetas pueden reaparecer. Cuando cambie la semana usa **Empezar una semana nueva**, en lugar de regenerar sin revisar. Una futura versión gestionará pendientes e inventario de forma más avanzada.
+- Al regenerar, se descuenta lo comprado para el menú activo. Si ya cubriste una cantidad, ese producto no aparece; si compraste menos o amplías el menú, aparece solo lo pendiente. **Empezar una semana nueva** reinicia este descuento y conserva el historial.
 
 ## Pruebas automáticas
 
@@ -75,3 +75,15 @@ HTML5, CSS3 y JavaScript sin paquetes externos; IndexedDB para datos, Service Wo
 - Valores iniciales neutros: presupuesto en cero y tienda configurable.
 
 Las pruebas de navegador usan Chrome real con emulación móvil Pixel 7 y escritorio. No equivalen a instalar en un teléfono Android real. Para ejecutarlas fuera de Windows configura CHROME_PATH con la ruta del navegador; APP_URL permite verificar un despliegue HTTPS.
+
+## Cambios de la versión 0.3
+
+- Lista del menú con descuento de compras registradas: no repite productos cubiertos.
+- Compras parciales y unidades kg/g o l/ml: solo muestra la cantidad que falta.
+- Iniciar una semana nueva conserva gastos e historial y reinicia las compras del menú.
+- Ajustes → Apariencia: Claro, Oscuro o Como el celular. Funciona sin red y se guarda en el dispositivo y en el respaldo.
+- Compatibilidad con datos v0.2: se conservan listas e historial. Como esa versión no identificaba el menú de cada compra, al actualizar se pregunta una sola vez si las compras de recetas de esta semana pertenecen al menú seleccionado. Sin confirmación no se asocian. Después se guardan referencias explícitas; no cambia automáticamente el menú al pasar de semana en el calendario.
+
+Al actualizar, abre con conexión para descargar la nueva versión y vuelve a abrir la aplicación. No borres datos ni desinstales para actualizar.
+
+- Los pesos menores a 1 kg se muestran en gramos en recetas, mandado e historial. El precio de productos por peso se captura por kilo; 600 g a 120 MXN/kg dan 72 MXN. La unidad presentada cambia al terminar de editar, conservando cantidades y precios del registro original.

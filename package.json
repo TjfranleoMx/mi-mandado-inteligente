@@ -1,6 +1,6 @@
 {
   "name": "mi-mandado-inteligente",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Aplicación PWA **offline-first** para Android y computadora: recetas con pasos, menú semanal, lista editable, cantidades reales de compra, precios unitarios y totales, gastos por mes y categorías, historial de precios, respaldo JSON e importación rápida de recetas generadas en ChatGPT.",
   "directories": {
     "test": "tests"

@@ -2,3 +2,32 @@
 @media (max-width:1100px){.sidebar{width:208px}.main-wrapper{margin-left:208px}.topbar{padding:25px 26px}main{padding:0 26px 65px}.hero-art{font-size:70px}.stats{gap:12px}.stat{padding:17px}}
 @media (max-width:750px){.sidebar{display:none}.main-wrapper{margin-left:0;padding-bottom:70px}.topbar{min-height:110px;padding:22px 20px 20px}.topbar h1{font-size:25px}.user-chip{display:none}.network-label{font-size:10px;padding:7px 9px}main{padding:0 14px 26px}.site-footer{font-size:10px;padding:20px 18px}.mobile-nav{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid #e2e9e2;padding:9px 4px max(10px,env(safe-area-inset-bottom));z-index:10;box-shadow:0 -2px 20px #0f442a0b}.mobile-nav .nav-link{display:flex;flex-direction:column;gap:3px;border-radius:10px;font-size:10px;padding:6px 2px;justify-content:center;text-align:center}.mobile-nav .nav-icon{width:auto;font-size:21px}.hero{padding:24px 21px}.hero-art{display:none}.hero h2{font-size:22px}.stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:14px 0}.stats .stat:last-child{grid-column:span 2}.stat{padding:16px}.stat .big{font-size:24px}.card{padding:18px}.grid-2{grid-template-columns:1fr}.recipe-grid{grid-template-columns:1fr}.edit-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.shopping-item{padding:16px}.ingredient-editor{grid-template-columns:minmax(100px,2fr) 64px 72px 31px}.ingredient-editor select.category-field{grid-column:1/-1}.ingredient-editor-head{display:none}dialog{padding:16px}.form-row{grid-template-columns:1fr}.category-bar>span:first-child{width:98px;font-size:10px}.category-bar strong{width:76px;font-size:11px}}
 @media (max-width:390px){.topbar h1{font-size:23px}.network-label{font-size:9px}.stat .big{font-size:21px}.shopping-heading .name{font-size:14px}.button{font-size:12px;padding:9px 11px}}
+
+/* Tema elegido en Ajustes; el sistema se resuelve sin conexión en app.mjs. */
+:root[data-theme="light"]{color-scheme:light}
+:root[data-theme="dark"]{color-scheme:dark;--ink:#e3ece6;--muted:#aebfb5;--primary:#88d5b6;--primary-soft:#283e33;--orange:#edb979;--line:#40564b;--card:#202c26;--warn:#edbc82;color:var(--ink);background:#17201c}
+[data-theme="dark"] .sidebar,[data-theme="dark"] .mobile-nav,[data-theme="dark"] .stat,[data-theme="dark"] .recipe-card,[data-theme="dark"] .shopping-item,[data-theme="dark"] .purchase,[data-theme="dark"] .empty,[data-theme="dark"] dialog{background:var(--card);border-color:var(--line)}
+[data-theme="dark"] .nav-link{color:var(--muted)}
+[data-theme="dark"] .nav-link:hover,[data-theme="dark"] .nav-link.active{background:#2c4136;color:var(--primary)}
+[data-theme="dark"] .brand small,[data-theme="dark"] .eyebrow,[data-theme="dark"] .side-label,[data-theme="dark"] .version,[data-theme="dark"] .site-footer,[data-theme="dark"] .stat .stat-label,[data-theme="dark"] .field label,[data-theme="dark"] .field .label,[data-theme="dark"] .purchase-items th,[data-theme="dark"] .ingredient-list span,[data-theme="dark"] .ingredient-editor-head,[data-theme="dark"] .helper-mini,[data-theme="dark"] .loading{color:var(--muted)}
+[data-theme="dark"] .side-help,[data-theme="dark"] .callout{background:#263a30;border-color:var(--line);color:#c3d8c9}
+[data-theme="dark"] .side-help small{color:#c3d8c9}
+[data-theme="dark"] .hero{background:linear-gradient(115deg,#16483c,#245a48);color:#edf5f0}
+[data-theme="dark"] .hero p{color:#c9e1d3}
+[data-theme="dark"] .button.primary{background:var(--primary);color:#102a1e}
+[data-theme="dark"] .button.cream,[data-theme="dark"] .button.outline{background:#293b31;color:#b6e5ca;border-color:#526f5d}
+[data-theme="dark"] .button.danger,[data-theme="dark"] .ingredient-editor button{background:#4a2b2a;color:#ffbdb7}
+[data-theme="dark"] .pill,[data-theme="dark"] .stat .mini-icon,[data-theme="dark"] .recipe-card .art,[data-theme="dark"] .user-chip,[data-theme="dark"] .network-label{background:#2c4335;color:#b1e3c6}
+[data-theme="dark"] .pill.neutral{background:#303c35;color:#c4d1c9}
+[data-theme="dark"] .pill.orange,[data-theme="dark"] .callout.warn,[data-theme="dark"] .network-label.offline{background:#42372a;border-color:#705536;color:#f1c894}
+[data-theme="dark"] .field input,[data-theme="dark"] .field select,[data-theme="dark"] .field textarea,[data-theme="dark"] .edit-grid input,[data-theme="dark"] .edit-grid select,[data-theme="dark"] .inline-edit,[data-theme="dark"] .ingredient-editor input,[data-theme="dark"] .ingredient-editor select{background:#18251e;color:var(--ink);border-color:#526c5b}
+[data-theme="dark"] input::placeholder,[data-theme="dark"] textarea::placeholder{color:#a6b6ac;opacity:1}
+[data-theme="dark"] .shopping-item.done{background:#273b2e}
+[data-theme="dark"] .item-footer strong,[data-theme="dark"] .success{color:#9ddfba}
+[data-theme="dark"] .warning{color:#f0c08a}
+[data-theme="dark"] .progress,[data-theme="dark"] .category-bar .track{background:#394f41}
+[data-theme="dark"] .purchase-items td,[data-theme="dark"] .purchase-items th,[data-theme="dark"] .ingredient-list li{border-color:var(--line)}
+[data-theme="dark"] .icon-close{background:#354a3c;color:#d8e6dd}
+[data-theme="dark"] #toast{background:#b3dfc2;color:#173023}
+[data-theme="dark"] #toast.error{background:#f2bab1;color:#49201a}
+button:focus-visible,select:focus-visible{outline:2px solid var(--primary);outline-offset:3px}
