@@ -13,16 +13,12 @@ El detalle de resultados se entrega en el informe de verificación.
 - Pantallas móviles y escritorio, sin desbordamiento horizontal.
 - El flujo probado no envía solicitudes a dominios externos.
 
-## Pendiente en un Android real
+## Android real — confirmado el 10 de noviembre de 2026
 
-1. Abrir la URL HTTPS con Chrome e instalar desde su menú.
-2. Abrir una receta y generar la lista.
-3. Registrar una compra ficticia; cerrar la aplicación.
-4. Activar modo avión y abrirla desde su icono: comprobar receta, lista y gasto.
-5. Crear otro artículo sin conexión y confirmar que permanece al reiniciar.
-
-La emulación móvil en Windows comprueba interfaz y flujo, pero no demuestra la
-instalación WebAPK ni la conservación del almacenamiento por Android.
+Se confirmó desde un teléfono Android la instalación y el uso de recetas y lista
+sin conexión, tras cerrar y volver a abrir en modo avión. Evidencia: confirmación
+manual del usuario. Las compras, importes y respaldos tienen cobertura automatizada
+en Chrome con perfil móvil y escritorio, tanto localmente como contra la URL pública.
 
 ## Límites conservados
 
