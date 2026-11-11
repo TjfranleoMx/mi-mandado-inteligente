@@ -35,24 +35,24 @@ export function scheduleDays(selected=[]){
   return days;
 }
 export function ensurePlans(state,today=todayLocal()){
-  state.plans??=[];state.savedMenus??=[];state.pantry??=[];
+  state.plans??=[];state.savedMenus??=[];state.pantry??=[];state.habitualSums??=[];
   let plan=state.plans.find(p=>p.id===state.activePlanId);
   if(!plan){
     const startDate=state.selected.length||state.shopping.length?weekRange(today).start:nextMonday(today);
-    plan={id:uid(),name:`Menú del ${startDate}`,startDate,selected:clone(state.selected),shopping:clone(state.shopping),menuPurchaseIds:clone(state.menuPurchaseIds||[]),pantry:clone(state.pantry)};
+    plan={id:uid(),name:`Menú del ${startDate}`,startDate,selected:clone(state.selected),shopping:clone(state.shopping),menuPurchaseIds:clone(state.menuPurchaseIds||[]),pantry:clone(state.pantry),habitualSums:clone(state.habitualSums)};
     state.plans.push(plan);state.activePlanId=plan.id;
   }
   return plan;
 }
 export function syncActivePlan(state){
   const plan=state.plans?.find(p=>p.id===state.activePlanId);
-  if(plan)for(const field of ['selected','shopping','menuPurchaseIds','pantry'])plan[field]=clone(state[field]||[]);
+  if(plan)for(const field of ['selected','shopping','menuPurchaseIds','pantry','habitualSums'])plan[field]=clone(state[field]||[]);
 }
 export function activatePlan(state,id){
   const plan=state.plans?.find(p=>p.id===id);
   if(!plan)throw new Error('No se encontró ese menú semanal.');
   syncActivePlan(state);state.activePlanId=id;
-  for(const field of ['selected','shopping','menuPurchaseIds','pantry'])state[field]=clone(plan[field]||[]);
+  for(const field of ['selected','shopping','menuPurchaseIds','pantry','habitualSums'])state[field]=clone(plan[field]||[]);
   return plan;
 }
 export function saveMenuTemplate(state,name){
@@ -80,9 +80,9 @@ export function createPlan(state,input){
   if(state.plans.length>=100)throw new Error('Puedes conservar hasta 100 semanas.');
   if(state.selected.length&&!state.savedMenus.some(m=>JSON.stringify(m.selected)===JSON.stringify(state.selected)&&m.recipes.every(r=>state.recipes.some(live=>recipeFingerprint(live)===recipeFingerprint(r)))))saveMenuTemplate(state,state.plans.find(p=>p.id===state.activePlanId).name);
   syncActivePlan(state);
-  const plan={id:uid(),...checked,selected,shopping:[],menuPurchaseIds:[],pantry:[]};
+  const plan={id:uid(),...checked,selected,shopping:[],menuPurchaseIds:[],pantry:[],habitualSums:[]};
   state.plans.push(plan);state.activePlanId=plan.id;
-  for(const field of ['selected','shopping','menuPurchaseIds','pantry'])state[field]=clone(plan[field]);
+  for(const field of ['selected','shopping','menuPurchaseIds','pantry','habitualSums'])state[field]=clone(plan[field]);
   return plan;
 }
 function recipeFingerprint(recipe){const {id,...data}=validateRecipe(recipe);return JSON.stringify(data);}

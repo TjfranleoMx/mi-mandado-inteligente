@@ -1,4 +1,4 @@
-# Mi Mandado Inteligente — versión 0.4
+# Mi Mandado Inteligente — versión 0.5
 
 Aplicación PWA **offline-first** para Android y computadora: recetas con pasos, menú semanal, lista editable, cantidades reales de compra, precios unitarios y totales, gastos por mes y categorías, historial de precios, respaldo JSON e importación rápida de recetas generadas en ChatGPT.
 
@@ -113,3 +113,25 @@ Los respaldos nuevos guardan las imágenes repetidas una sola vez y conservan bi
 Si retiras una receta del recetario y una semana ya la utiliza, se conserva para esa semana. Los menús guardados conservan su propia copia. Los datos de la versión anterior se mantienen en una semana cuyo lunes puedes ajustar en **Editar menú**.
 
 Todo funciona localmente tras la primera carga: fotos, planes, biblioteca y revisión de casa. No se añade nube, analítica, cuentas, QR de importación ni desayunos en esta entrega.
+
+## Versión 0.5: secciones, habituales y modo súper
+
+Se añadieron campos opcionales al guardado y a los respaldos: `habituales`, `sectionOverrides`, `prefs`, `dataRevision` y, en cada producto de la lista, `section` y `habitualId`. `schemaVersion` sigue en 1. Los respaldos anteriores se abren igual y reciben valores por defecto. Las nuevas pantallas usan estos datos. Pruebas: `tests/etapa1-datos.test.mjs`, `tests/etapa1-cache.test.mjs` y `tests/browser/etapa1.spec.mjs`, con un respaldo v0.4 ficticio en `tests/fixtures/`.
+
+## Recetas con detalles y «Cocinar paso a paso»
+
+Las recetas pueden traer, como campos **opcionales**, utensilios, preparación previa, notas, información pendiente y detalles por paso (cantidades, fuego, tiempo, cómo comprobar, seguridad y términos). Las recetas antiguas, con pasos de texto, se importan y se ven igual. La receta tiene un botón opcional «Cocinar paso a paso» con letra grande; el paso actual se recuerda solo mientras la app está abierta.
+
+Formato y reglas: `FORMATO-RECETAS-DETALLADAS.md`. Archivos de ejemplo con imagen: `ejemplo-receta-detallada.json` y `ejemplo-menu-detallado.json`. Contenido de cocina pendiente de revisión: `CONTENIDO-PENDIENTE-DE-REVISION.md`.
+
+
+### Uso de las funciones de v0.5
+
+- **Mandado** agrupa por secciones del súper, separadas de las categorías de gastos. Puedes corregir la sección de un producto y se recuerda localmente.
+- **Mis habituales** conserva una biblioteca para elegir qué agregar esta semana. Nada se añade automáticamente. La cantidad de esta semana no cambia la cantidad habitual. Ante coincidencias puedes sumar, dejar dos renglones o no agregar.
+- Lo sumado a una receta se conserva como artículo independiente si retiras esa receta y regeneras. Las compras y cantidades en casa se descuentan una sola vez por producto compatible.
+- **Estoy en el súper** se abre desde Inicio o Mandado: pendientes grandes por sección, comprados plegados, edición al tocar y revisión antes de registrar compra. No inventa precios ni cantidades.
+- Al editar el texto de un paso con detalles, revisa si esos detalles siguen correspondiendo antes de guardar. Los campos nuevos se incluyen en menús guardados y respaldos.
+- La versión aparece en **Ajustes**, también en celular. Abre con internet, espera y vuelve a abrir para actualizar; no borres los datos.
+
+La v0.4 anterior fue confirmada por el usuario en Android real. Esta entrega nueva se verifica con Chrome de Windows (móvil emulado y escritorio), con una prueba local de actualización desde v0.4 y pruebas del despliegue público. La prueba física de v0.5 en Android queda pendiente del usuario.

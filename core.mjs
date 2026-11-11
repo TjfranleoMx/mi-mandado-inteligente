@@ -1,6 +1,21 @@
 export const CATEGORIES = ['Verduras y frutas','Proteínas','Cereales y legumbres','Lácteos','Despensa','Limpieza','Higiene','Otros'];
 export const UNITS = ['kg','g','l','ml','pza','paquete'];
 export const PACK_VERSION = 1;
+// Secciones del supermercado: independientes de las categorías de gasto (CATEGORIES).
+export const SECTIONS = [
+  {id:'frutas-verduras',label:'Frutas y verduras'},
+  {id:'carnes-pescados',label:'Carnes y pescados'},
+  {id:'lacteos-huevos',label:'Lácteos y huevos'},
+  {id:'pan-tortillas',label:'Pan y tortillas'},
+  {id:'abarrotes',label:'Abarrotes y enlatados'},
+  {id:'limpieza',label:'Limpieza'},
+  {id:'higiene',label:'Higiene'},
+  {id:'otros',label:'Otros'}
+];
+export const SECTION_IDS = SECTIONS.map(s=>s.id);
+export const DATA_REVISION = 2; // v0.4 = 1 (sin campo); schemaVersion se conserva en 1 para no romper respaldos.
+export const DEFAULT_PREFS = {groupBySection:true, superMode:false, purchasedFolded:true};
+const SECTION_BY_CATEGORY = {'Verduras y frutas':'frutas-verduras','Proteínas':'carnes-pescados','Cereales y legumbres':'abarrotes','Lácteos':'lacteos-huevos','Despensa':'abarrotes','Limpieza':'limpieza','Higiene':'higiene','Otros':'otros'};
 export const numeric = value => {
   if (typeof value === 'number') return Number.isFinite(value) ? value : NaN;
   const normalized = String(value ?? '').trim().replace(/\s/g,'').replace(',','.');
@@ -18,6 +33,18 @@ export const factor = unit => ({kg:1000,g:1,l:1000,ml:1,pza:1,paquete:1})[unit]|
 export const convert = (quantity,from,to) => unitGroup(from)===unitGroup(to) && factor(to)>0 ? (Number(quantity)*factor(from)/factor(to)) : NaN;
 export const sameProduct = (a,b) => normalizedName(a.name)===normalizedName(b.name) && unitGroup(a.unit)===unitGroup(b.unit);
 export const keyOf = item => `${normalizedName(item.name)}|${unitGroup(item.unit)}`;
+// Sección por defecto: 1) la que el usuario corrigió para ese producto, 2) palabras clave, 3) la categoría.
+export function sectionFor(name,category,overrides={}){
+  const key=normalizedName(name);
+  const own=overrides&&Object.prototype.hasOwnProperty.call(overrides,key)?overrides[key]:null;
+  if(SECTION_IDS.includes(own))return own;
+  if(!['Limpieza','Higiene'].includes(category)){
+    if(/\bhuevos?\b/.test(key))return 'lacteos-huevos';
+    if(/\b(tortillas?|bolillos?|teleras?|baguettes?|pan|panes)\b/.test(key))return 'pan-tortillas';
+    if(/\b(atun|sardinas?|enlatad[oa]s?|lata|latas)\b/.test(key))return 'abarrotes';
+  }
+  return SECTION_BY_CATEGORY[category]||'otros';
+}
 export const exampleRecipes = [
   {id:'ejemplo-pollo-calabacitas',image:'./images/pollo-calabacitas.webp',title:'Pollo con calabacitas y frijoles',servings:3,minutes:35,tags:['Ejemplo'],ingredients:[
     {name:'Pechuga de pollo',quantity:0.6,unit:'kg',category:'Proteínas'},
@@ -36,7 +63,7 @@ export const exampleRecipes = [
     {name:'Limón',quantity:2,unit:'pza',category:'Verduras y frutas'}],
    steps:['Lava y desinfecta las verduras. Cuece los nopales y escúrrelos.','Escurre el atún y mezcla con nopales, jitomate y cebolla picados.','Añade jugo de limón. Sirve en tres platos con una porción de aguacate en cada uno.','Acompaña con la porción de carbohidratos indicada en el plan alimentario de la persona, si corresponde.']}
 ];
-export const makeInitialState = () => ({schemaVersion:1, budgetWeekly:0, defaultStore:'Mi tienda', recipes:structuredClone(exampleRecipes), selected:[], shopping:[], purchases:[], menuPurchaseIds:[], theme:'system'});
+export const makeInitialState = () => ({schemaVersion:1, budgetWeekly:0, defaultStore:'Mi tienda', recipes:structuredClone(exampleRecipes), selected:[], shopping:[], purchases:[], menuPurchaseIds:[], theme:'system', habituales:[], habitualSums:[], sectionOverrides:{}, prefs:{...DEFAULT_PREFS}, dataRevision:DATA_REVISION});
 export function validateImage(image){
   if(image===undefined||image===null||image==='')return '';
   if(typeof image!=='string')throw new Error('La imagen de receta debe ser un archivo compatible.');
@@ -46,6 +73,45 @@ export function validateImage(image){
   let head;try{head=atob(match[2].slice(0,24));}catch{throw new Error('La imagen está dañada.');}
   if((match[1]==='png'&&!head.startsWith('\x89PNG\r\n\x1a\n'))||(match[1]==='jpeg'&&!head.startsWith('\xff\xd8\xff'))||(match[1]==='webp'&&!(head.startsWith('RIFF')&&head.slice(8,12)==='WEBP')))throw new Error('El contenido de la imagen no coincide con su formato.');
   return image;
+}
+// --- Detalles opcionales de receta (utensilios, preparación previa, notas, límites y detalles por paso) ---
+// Todo es opcional: una receta antigua, con pasos de texto, se valida exactamente igual que antes.
+function optionalList(value,{max,len,label,title}){
+  if(value===undefined||value===null)return [];
+  if(!Array.isArray(value)||value.length>max)throw new Error(`«${title}»: «${label}» debe ser una lista de hasta ${max} elementos.`);
+  const list=value.map(v=>String(v??'').trim()).filter(Boolean);
+  if(list.some(v=>v.length>len))throw new Error(`«${title}»: un elemento de «${label}» supera ${len} caracteres.`);
+  return list;
+}
+function optionalText(value,len,label,title){
+  const text=String(value??'').trim();
+  if(text.length>len)throw new Error(`«${title}»: «${label}» supera ${len} caracteres.`);
+  return text;
+}
+function validateStepDetail(raw,title){
+  const out={};
+  const inputIngredients=raw.ingredients??raw.ingredientes;
+  if(inputIngredients!==undefined&&inputIngredients!==null){
+    if(!Array.isArray(inputIngredients)||inputIngredients.length>20)throw new Error(`«${title}»: los ingredientes de un paso deben ser una lista de hasta 20.`);
+    const list=inputIngredients.map(ing=>{
+      const name=String(ing?.name??ing?.nombre??'').trim(),quantity=numeric(ing?.quantity??ing?.cantidad),unit=String(ing?.unit??ing?.unidad??'').toLowerCase().trim();
+      if(!name||name.length>90||!Number.isFinite(quantity)||quantity<=0||quantity>100000||!UNITS.includes(unit))throw new Error(`Ingrediente de un paso inválido en «${title}»: revisa nombre, cantidad y unidad.`);
+      return {name,quantity,unit};
+    });
+    if(list.length)out.ingredients=list;
+  }
+  for(const [key,aliases,len] of [['heat',['fuego'],60],['time',['tiempo'],60],['check',['comprobar'],300],['safetyCheck',['seguridad'],300]]){
+    const value=optionalText(raw[key]??aliases.map(a=>raw[a]).find(v=>v!==undefined),len,key,title);
+    if(value)out[key]=value;
+  }
+  const rawTerms=raw.terms??raw.terminos;
+  if(rawTerms!==undefined&&rawTerms!==null){
+    if(!Array.isArray(rawTerms)||rawTerms.length>6)throw new Error(`«${title}»: los términos de un paso deben ser una lista de hasta 6.`);
+    const terms=rawTerms.map(t=>({term:optionalText(t?.term??t?.termino,40,'término',title),meaning:optionalText(t?.meaning??t?.significado,200,'significado',title)})).filter(t=>t.term||t.meaning);
+    if(terms.some(t=>!t.term||!t.meaning))throw new Error(`«${title}»: cada término necesita su palabra y su explicación.`);
+    if(terms.length)out.terms=terms;
+  }
+  return out;
 }
 export function validateRecipe(raw){
   if (!raw || typeof raw!=='object') throw new Error('Receta inválida.');
@@ -65,13 +131,28 @@ export function validateRecipe(raw){
   });
   const rawSteps=raw.steps??raw.pasos??[];
   if(!Array.isArray(rawSteps)||!rawSteps.length||rawSteps.length>40) throw new Error(`La receta «${title}» necesita instrucciones paso a paso.`);
-  const steps=rawSteps.map(s=>String(s).trim()).filter(Boolean);
+  // Un paso puede ser texto (formato antiguo) o un objeto {texto, ingredientes, fuego, tiempo, comprobar, seguridad, terminos}.
+  // También se aceptan los detalles ya guardados en `stepDetails` (misma posición que `steps`).
+  const parsedSteps=rawSteps.map((s,i)=>{
+    const isObject=s&&typeof s==='object'&&!Array.isArray(s);
+    const stored=Array.isArray(raw.stepDetails)?raw.stepDetails[i]:null;
+    const source=isObject?s:(stored&&typeof stored==='object'&&!Array.isArray(stored)?stored:null);
+    return {text:isObject?String(s.text??s.texto??'').trim():String(s).trim(),detail:source?validateStepDetail(source,title):{}};
+  }).filter(x=>x.text);
+  const steps=parsedSteps.map(x=>x.text);
   if(!steps.length || steps.some(s=>s.length>1500)) throw new Error(`Instrucciones inválidas en «${title}».`);
+  const stepDetails=parsedSteps.map(x=>Object.keys(x.detail).length?x.detail:null);
+  const extras={};
+  if(stepDetails.some(Boolean))extras.stepDetails=stepDetails;
+  for(const [key,aliases,max,len,label] of [['utensils',['utensilios'],30,80,'utensilios'],['prep',['preparacion_previa'],20,300,'preparación previa'],['notes',['notas'],10,600,'notas'],['limitations',['limitaciones'],10,300,'limitaciones']]){
+    const list=optionalList(raw[key]??aliases.map(a=>raw[a]).find(v=>v!==undefined),{max,len,label,title});
+    if(list.length)extras[key]=list;
+  }
   const minutes = numeric(raw.minutes??raw.minutos??30);
   const tags=Array.isArray(raw.tags) ? raw.tags.slice(0,8).map(v=>String(v).slice(0,60)) : [];
   const fallback=exampleRecipes.find(r=>r.id===raw.id&&r.title===title)?.image||'';
   const image=validateImage(raw.image===undefined?fallback:raw.image);
-  return {image,archived:raw.archived===true,id:typeof raw.id==='string'&&raw.id.length<100?raw.id:uid(),title,servings,minutes:Number.isFinite(minutes)&&minutes>=0?minutes:30,tags,ingredients,steps};
+  return {image,archived:raw.archived===true,id:typeof raw.id==='string'&&raw.id.length<100?raw.id:uid(),title,servings,minutes:Number.isFinite(minutes)&&minutes>=0?minutes:30,tags,ingredients,steps,...extras};
 }
 export function parseRecipePack(raw){
   const recipes=Array.isArray(raw)?raw:raw?.recipes;
@@ -90,9 +171,14 @@ export function mergeRecipes(existing,incoming){
   }
   return {recipes:[...existing,...added],count:added.length,skipped:incoming.length-added.length};
 }
-export function generateShoppingList(recipes,selected,existing=[],purchases=[],pantry=[]){
+// Lista normal: los habituales sumados solo se aplican si su ingrediente sigue en el menú.
+export const generateShoppingList=(recipes,selected,existing=[],purchases=[],pantry=[],sectionOverrides={},habitualSums=[])=>buildShoppingList(recipes,selected,existing,purchases,pantry,sectionOverrides,habitualSums,{keepOrphans:false}).items;
+// Igual, pero si el ingrediente ya no está en el menú conserva la cantidad extra como artículo independiente
+// y devuelve en `orphans` qué pasó con cada una para avisar a la persona.
+export const generateShoppingListDetailed=(recipes,selected,existing=[],purchases=[],pantry=[],sectionOverrides={},habitualSums=[])=>buildShoppingList(recipes,selected,existing,purchases,pantry,sectionOverrides,habitualSums,{keepOrphans:true});
+function buildShoppingList(recipes,selected,existing=[],purchases=[],pantry=[],sectionOverrides={},habitualSums=[],{keepOrphans=false}={}){
   const byId=new Map(recipes.map(r=>[r.id,r]));
-  const generated=new Map();
+  const generated=new Map(),orphanSums=new Map();
   for(const sel of selected){
     const recipe=byId.get(sel.recipeId);if(!recipe)continue;
     const times=Number(sel.times)||1;
@@ -102,19 +188,48 @@ export function generateShoppingList(recipes,selected,existing=[],purchases=[],p
         const item=generated.get(key);
         item.plannedQty=round(Number(item.plannedQty)+convert(ing.quantity*times,ing.unit,item.unit),5);
         if(!item.recipeIds.includes(recipe.id))item.recipeIds.push(recipe.id);
-      } else generated.set(key,{id:uid(),name:ing.name,category:ing.category,unit:ing.unit,plannedQty:round(ing.quantity*times,5),actualQty:'',unitPrice:'',totalPaid:'',priceMode:'unit',checked:false,store:'',source:'recipe',recipeIds:[recipe.id]});
+      } else generated.set(key,{id:uid(),name:ing.name,category:ing.category,unit:ing.unit,section:sectionFor(ing.name,ing.category,sectionOverrides),plannedQty:round(ing.quantity*times,5),actualQty:'',unitPrice:'',totalPaid:'',priceMode:'unit',checked:false,store:'',source:'recipe',recipeIds:[recipe.id]});
     }
   }
-  // Restar solo compras registradas del menú activo, con unidades compatibles.
-  for(const [key,item] of generated){
-    let bought=0;
-    for(const entry of pantry)if(sameProduct(entry,item)&&positive(entry.quantity))bought+=convert(numeric(entry.quantity),entry.unit,item.unit);
-    for(const purchase of purchases)for(const entry of purchase.items){
-      if(entry.source==='recipe'&&sameProduct(entry,item)&&positive(entry.actualQty))bought+=convert(numeric(entry.actualQty),entry.unit,item.unit);
+  // Habituales que la persona decidió SUMAR a un ingrediente del menú (solo si ese ingrediente sigue en el menú).
+  for(const extra of habitualSums){
+    const item=generated.get(keyOf(extra));
+    if(!positive(extra.quantity))continue;
+    if(!item){
+      if(keepOrphans){
+        const orphanKey=`${keyOf(extra)}|suma:${extra.habitualId}`;
+        generated.set(orphanKey,{id:uid(),name:extra.name,category:extra.category,unit:extra.unit,section:sectionFor(extra.name,extra.category,sectionOverrides),plannedQty:round(numeric(extra.quantity),5),actualQty:'',unitPrice:'',totalPaid:'',priceMode:'unit',checked:false,store:'',source:'manual',recipeIds:[],habitualId:extra.habitualId});
+        orphanSums.set(orphanKey,extra);
+      }
+      continue;
     }
-    item.plannedQty=round(Math.max(0,item.plannedQty-bought),5);
+    item.plannedQty=round(Number(item.plannedQty)+convert(numeric(extra.quantity),extra.unit,item.unit),5);
+    if(!item.recipeIds.includes('habitual:'+extra.habitualId))item.recipeIds.push('habitual:'+extra.habitualId);
+  }
+  // Restar solo compras registradas del menú activo y lo que hay en casa, con unidades compatibles.
+  // Lo disponible de un producto se reparte UNA sola vez entre todos sus renglones (por ejemplo, varios extras de habituales
+  // sin receta): nunca se descuenta más de lo comprado o disponible ni se pierde lo solicitado.
+  const pools=new Map();
+  for(const [key,item] of generated){
+    const product=keyOf(item);
+    if(!pools.has(product)){
+      let bought=0;
+      for(const entry of pantry)if(sameProduct(entry,item)&&positive(entry.quantity))bought+=convert(numeric(entry.quantity),entry.unit,item.unit);
+      for(const purchase of purchases)for(const entry of purchase.items){
+        if(entry.source==='recipe'&&sameProduct(entry,item)&&positive(entry.actualQty))bought+=convert(numeric(entry.actualQty),entry.unit,item.unit);
+      }
+      pools.set(product,{unit:item.unit,left:bought});
+    }
+    const pool=pools.get(product);
+    const take=Math.min(convert(pool.left,pool.unit,item.unit),item.plannedQty);
+    item.plannedQty=round(Math.max(0,item.plannedQty-take),5);
+    pool.left=round(Math.max(0,pool.left-convert(take,item.unit,pool.unit)),6);
     if(item.plannedQty===0)generated.delete(key);
   }
+  const orphans=[...orphanSums].map(([key,extra])=>{
+    const remaining=generated.get(key)?.plannedQty??0;
+    return {habitualId:extra.habitualId,name:extra.name,unit:extra.unit,quantity:numeric(extra.quantity),remaining,kept:remaining>0};
+  });
   const oldByKey=new Map(existing.filter(i=>i.source==='recipe').map(i=>[keyOf(i),i]));
   const recipeItems=[...generated].map(([key,item])=>{
     const previous=oldByKey.get(key);
@@ -125,7 +240,7 @@ export function generateShoppingList(recipes,selected,existing=[],purchases=[],p
       unitPrice:changed&&nonnegative(previous.unitPrice)?round(numeric(previous.unitPrice)*convert(1,item.unit,previous.unit),6):previous.unitPrice,
       totalPaid:previous.totalPaid,priceMode:previous.priceMode||'unit',checked:previous.checked,store:previous.store};
   });
-  return [...recipeItems,...existing.filter(i=>i.source==='manual')];
+  return {items:[...recipeItems,...existing.filter(i=>i.source==='manual')],orphans};
 }
 export function applyShoppingEdit(item,field,value){
   if(!['plannedQty','actualQty','unitPrice','totalPaid'].includes(field))return item;
@@ -214,6 +329,42 @@ export function spendingSummary(purchases,month){
   return {count:selected.length,total:round(selected.reduce((s,p)=>s+purchaseTotal(p),0),2),categories:categoryTotals};
 }
 const localDate=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
+// --- Datos nuevos (revisión 2): se aceptan ausentes en respaldos de v0.4 y anteriores. ---
+function safeSectionOverrides(input){
+  if(input===undefined||input===null)return {};
+  if(typeof input!=='object'||Array.isArray(input))throw new Error('Las secciones guardadas son inválidas.');
+  const entries=Object.entries(input);
+  if(entries.length>3000)throw new Error('Las secciones guardadas superan el límite.');
+  // Una preferencia de sección es solo una pista: se descartan las entradas que no se entienden.
+  return Object.fromEntries(entries.filter(([k,v])=>k&&k!=='__proto__'&&k.length<=100&&SECTION_IDS.includes(v)).map(([k,v])=>[normalizedName(k),v]));
+}
+function safePrefs(input){
+  if(input===undefined||input===null)return {...DEFAULT_PREFS};
+  if(typeof input!=='object'||Array.isArray(input))throw new Error('Las preferencias guardadas son inválidas.');
+  return Object.fromEntries(Object.entries(DEFAULT_PREFS).map(([k,d])=>[k,typeof input[k]==='boolean'?input[k]:d]));
+}
+export function safeHabitualSums(input){
+  if(input===undefined||input===null)return [];
+  if(!Array.isArray(input)||input.length>500)throw new Error('Los habituales sumados al menú son inválidos.');
+  return input.map(x=>{
+    if(!x||typeof x.habitualId!=='string'||!x.habitualId||!String(x.name||'').trim()||!UNITS.includes(x.unit)||!positive(x.quantity)||numeric(x.quantity)>100000)throw new Error('Un habitual sumado al menú es inválido.');
+    return {habitualId:x.habitualId.slice(0,100),name:String(x.name).trim().slice(0,100),quantity:numeric(x.quantity),unit:x.unit,category:CATEGORIES.includes(x.category)?x.category:'Otros'};
+  });
+}
+export function safeHabituales(input,overrides={}){
+  if(input===undefined||input===null)return [];
+  if(!Array.isArray(input)||input.length>500)throw new Error('La biblioteca de habituales es inválida o supera 500 productos.');
+  const ids=new Set();
+  return input.map(h=>{
+    const name=String(h?.name??'').trim();
+    if(!h||typeof h!=='object'||!name||name.length>100||!UNITS.includes(h.unit)||!positive(h.quantity)||numeric(h.quantity)>100000)throw new Error('Un producto habitual es inválido: revisa nombre, cantidad y unidad.');
+    const category=CATEGORIES.includes(h.category)?h.category:'Otros';
+    let id=typeof h.id==='string'&&h.id&&h.id.length<=100?h.id:uid();
+    if(ids.has(id))id=uid();
+    ids.add(id);
+    return {id,name,quantity:numeric(h.quantity),unit:h.unit,category,section:SECTION_IDS.includes(h.section)?h.section:sectionFor(name,category,overrides)};
+  });
+}
 export function validateBackup(raw,today=localDate()){
   if(!raw||typeof raw!=='object'||raw.schemaVersion!==1||!Array.isArray(raw.recipes)||!Array.isArray(raw.selected)||!Array.isArray(raw.shopping)||!Array.isArray(raw.purchases))throw new Error('El archivo no es un respaldo compatible de Mi Mandado Inteligente.');
   if(raw.recipes.length>2000||raw.shopping.length>3000||raw.purchases.length>10000)throw new Error('El respaldo supera los límites de seguridad.');
@@ -229,10 +380,14 @@ export function validateBackup(raw,today=localDate()){
     });
   }
   const selected=safeSelected(raw.selected);
+  const sectionOverrides=safeSectionOverrides(raw.sectionOverrides);
+  const prefs=safePrefs(raw.prefs);
+  const habituales=safeHabituales(raw.habituales,sectionOverrides);
   function safeItem(i){
     if(!i||typeof i!=='object'||!String(i.name||'').trim()||String(i.name).length>100||!UNITS.includes(i.unit))throw new Error('El respaldo tiene un producto inválido.');
     const cat=CATEGORIES.includes(i.category)?i.category:'Otros';
-    return {id:String(i.id||uid()).slice(0,100),name:String(i.name).slice(0,100),category:cat,unit:i.unit,plannedQty:nonnegative(i.plannedQty)?numeric(i.plannedQty):0,actualQty:nonnegative(i.actualQty)?numeric(i.actualQty):'',unitPrice:nonnegative(i.unitPrice)?numeric(i.unitPrice):'',totalPaid:nonnegative(i.totalPaid)?numeric(i.totalPaid):'',priceMode:i.priceMode==='total'?'total':'unit',checked:!!i.checked,store:String(i.store||'').slice(0,80),source:i.source==='recipe'?'recipe':'manual',recipeIds:Array.isArray(i.recipeIds)?i.recipeIds.slice(0,80).map(String):[]};
+    const extra=typeof i.habitualId==='string'&&i.habitualId?{habitualId:i.habitualId.slice(0,100)}:{};
+    return {...extra,id:String(i.id||uid()).slice(0,100),name:String(i.name).slice(0,100),category:cat,section:SECTION_IDS.includes(i.section)?i.section:sectionFor(i.name,cat,sectionOverrides),unit:i.unit,plannedQty:nonnegative(i.plannedQty)?numeric(i.plannedQty):0,actualQty:nonnegative(i.actualQty)?numeric(i.actualQty):'',unitPrice:nonnegative(i.unitPrice)?numeric(i.unitPrice):'',totalPaid:nonnegative(i.totalPaid)?numeric(i.totalPaid):'',priceMode:i.priceMode==='total'?'total':'unit',checked:!!i.checked,store:String(i.store||'').slice(0,80),source:i.source==='recipe'?'recipe':'manual',recipeIds:Array.isArray(i.recipeIds)?i.recipeIds.slice(0,80).map(String):[]};
   }
   const shopping=raw.shopping.map(safeItem);
   const purchases=raw.purchases.map(p=>{
@@ -256,7 +411,7 @@ export function validateBackup(raw,today=localDate()){
   }
   function safePlan(p){
     if(!p||typeof p.id!=='string'||!validDate(p.startDate)||new Date(`${p.startDate}T12:00:00Z`).getUTCDay()!==1||!Array.isArray(p.shopping)||p.shopping.length>3000)throw new Error('Menú semanal inválido en el respaldo.');
-    return {id:p.id.slice(0,100),name:String(p.name||'Menú semanal').slice(0,100),startDate:p.startDate,selected:safeSelected(p.selected),shopping:p.shopping.map(safeItem),pantry:safePantry(p.pantry),menuPurchaseIds:Array.isArray(p.menuPurchaseIds)?[...new Set(p.menuPurchaseIds.filter(id=>knownIds.has(id)))]:[]};
+    return {id:p.id.slice(0,100),name:String(p.name||'Menú semanal').slice(0,100),startDate:p.startDate,selected:safeSelected(p.selected),shopping:p.shopping.map(safeItem),pantry:safePantry(p.pantry),habitualSums:safeHabitualSums(p.habitualSums),menuPurchaseIds:Array.isArray(p.menuPurchaseIds)?[...new Set(p.menuPurchaseIds.filter(id=>knownIds.has(id)))]:[]};
   }
   if(raw.plans!==undefined&&(!Array.isArray(raw.plans)||raw.plans.length>100))throw new Error('Biblioteca de semanas inválida.');
   if(raw.savedMenus!==undefined&&(!Array.isArray(raw.savedMenus)||raw.savedMenus.length>100))throw new Error('Biblioteca de menús inválida.');
@@ -269,5 +424,5 @@ export function validateBackup(raw,today=localDate()){
     return {id:m.id.slice(0,100),name:String(m.name||'Menú guardado').slice(0,100),createdAt:nonnegative(m.createdAt)?numeric(m.createdAt):0,recipes:snapshots,selected:safeSelected(m.selected,snapshots)};
   });
   const pantry=safePantry(raw.pantry);
-  return {plans,activePlanId,savedMenus,pantry,schemaVersion:1,budgetWeekly:budget,defaultStore:String(raw.defaultStore||'Mi tienda').slice(0,80),recipes,selected,shopping,purchases,menuPurchaseIds,menuMigrationPending,theme};
+  return {plans,activePlanId,savedMenus,pantry,habituales,habitualSums:safeHabitualSums(raw.habitualSums),sectionOverrides,prefs,dataRevision:DATA_REVISION,schemaVersion:1,budgetWeekly:budget,defaultStore:String(raw.defaultStore||'Mi tienda').slice(0,80),recipes,selected,shopping,purchases,menuPurchaseIds,menuMigrationPending,theme};
 }
